@@ -13,6 +13,7 @@ import random
 from datetime import datetime
 from tkinter import filedialog, messagebox
 from typing import Dict, Any, List
+import signal
 
 try:
     from LibreHardwareMonitor import Hardware  # type: ignore
@@ -31,11 +32,34 @@ except ImportError:
     SCREENINFO_AVAILABLE = False
     print("screeninfo not found")
 
+# Попытка импорта для системного трея
+try:
+    import pystray
+    from PIL import Image, ImageDraw, ImageFont
+    TRAY_AVAILABLE = True
+    print("pystray and PIL loaded")
+except ImportError:
+    TRAY_AVAILABLE = False
+    print("pystray or PIL not installed, tray functionality disabled")
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 DB_PATH = "system_monitor.db"
 USERS = {"a": "1"}
+
+# Функция для принудительного завершения процесса
+def force_exit():
+    print("Принудительное завершение процесса...")
+    os._exit(0)
+
+# Обработчик сигналов для завершения
+def signal_handler(sig, frame):
+    print(f"Получен сигнал {sig}, завершаем процесс...")
+    os._exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 class Database:
@@ -182,6 +206,7 @@ class HardwareCollector:
         self.monitors_info = []
         self.extra_sensors = []
         self.detailed_hardware = {}
+        self._closed = False
         self._init_libre_hardware()
         self._collect_system_info()
         self._collect_monitors_info()
@@ -216,6 +241,8 @@ class HardwareCollector:
             print("LibreHardwareMonitor not available")
 
     def _collect_detailed_hardware(self):
+        if self._closed:
+            return
         self.detailed_hardware = {}
         try:
             import wmi
@@ -252,6 +279,8 @@ class HardwareCollector:
         except:
             self.detailed_hardware['cpu'] = {'name': platform.processor()}
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -284,6 +313,8 @@ class HardwareCollector:
         except:
             self.detailed_hardware['memory'] = []
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -317,6 +348,8 @@ class HardwareCollector:
         except:
             self.detailed_hardware['gpu'] = []
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -345,6 +378,8 @@ class HardwareCollector:
         except:
             self.detailed_hardware['disks'] = []
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -379,6 +414,8 @@ class HardwareCollector:
         except:
             self.detailed_hardware['motherboard'] = {}
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -409,6 +446,8 @@ class HardwareCollector:
         except:
             self.detailed_hardware['bios'] = {}
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -438,6 +477,8 @@ class HardwareCollector:
             self.detailed_hardware['network'] = []
 
     def _collect_monitors_info(self):
+        if self._closed:
+            return
         self.monitors_info = []
         monitor_data = []
         if SCREENINFO_AVAILABLE:
@@ -461,6 +502,8 @@ class HardwareCollector:
             except Exception as e:
                 print(f"screeninfo error: {e}")
 
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -560,6 +603,8 @@ class HardwareCollector:
         print(f"Total monitors: {len(self.monitors_info)}")
 
     def _collect_extra_sensors(self):
+        if self._closed:
+            return
         self.extra_sensors = []
         if self.computer:
             try:
@@ -615,6 +660,8 @@ class HardwareCollector:
                 print(f"Extra sensors error: {e}")
 
     def _collect_system_info(self):
+        if self._closed:
+            return
         try:
             import wmi
             w = wmi.WMI()
@@ -648,9 +695,9 @@ class HardwareCollector:
             self.system_info['bios_version'] = 'N/A'
 
     def get_all_temperatures_libre(self):
+        if self._closed or not self.computer:
+            return {}
         temps = {}
-        if not self.computer:
-            return temps
         try:
             for hardware in self.computer.Hardware:
                 hardware.Update()
@@ -664,7 +711,7 @@ class HardwareCollector:
         return temps
 
     def get_cpu_temperature_libre(self):
-        if not self.computer:
+        if self._closed or not self.computer:
             return 0
         try:
             max_temp = 0
@@ -682,7 +729,7 @@ class HardwareCollector:
             return 0
 
     def get_gpu_temperature_libre(self):
-        if not self.computer:
+        if self._closed or not self.computer:
             return 0
         try:
             for hardware in self.computer.Hardware:
@@ -699,6 +746,8 @@ class HardwareCollector:
             return 0
 
     def get_cpu_temperature(self):
+        if self._closed:
+            return 0
         temp = self.get_cpu_temperature_libre()
         if temp > 0:
             return temp
@@ -735,6 +784,8 @@ class HardwareCollector:
         return 45 + random.randint(-5, 15)
 
     def get_gpu_temperature(self):
+        if self._closed:
+            return 0
         temp = self.get_gpu_temperature_libre()
         if temp > 0:
             return temp
@@ -757,6 +808,8 @@ class HardwareCollector:
         return 0
 
     def get_motherboard_temperatures(self):
+        if self._closed:
+            return {}
         temps = {}
         if self.computer:
             try:
@@ -791,6 +844,8 @@ class HardwareCollector:
         return temps
 
     def get_disk_temperatures(self):
+        if self._closed:
+            return {}
         temps = {}
         if self.computer:
             try:
@@ -830,6 +885,8 @@ class HardwareCollector:
         return temps
 
     def get_cpu_core_temperatures(self):
+        if self._closed:
+            return {}
         temps = {}
         if self.computer:
             try:
@@ -876,6 +933,8 @@ class HardwareCollector:
         return temps
 
     def get_all_temperatures_enhanced(self):
+        if self._closed:
+            return {}
         all_temps = {}
         libre_temps = self.get_all_temperatures_libre()
         cpu_temp = self.get_cpu_temperature()
@@ -898,6 +957,8 @@ class HardwareCollector:
         return self.get_all_temperatures_enhanced()
 
     def get_extra_sensors(self):
+        if self._closed:
+            return []
         self._collect_extra_sensors()
         return self.extra_sensors
 
@@ -905,6 +966,8 @@ class HardwareCollector:
         return self.detailed_hardware
 
     def get_detailed_cpu_info(self):
+        if self._closed:
+            return {}
         cpu_info = {
             'name': platform.processor() or 'Unknown CPU',
             'manufacturer': 'Unknown',
@@ -939,6 +1002,8 @@ class HardwareCollector:
         return cpu_info
 
     def get_detailed_ram_info(self):
+        if self._closed:
+            return {}
         mem = psutil.virtual_memory()
         ram_info = {
             'total': mem.total / (1024 ** 3),
@@ -967,6 +1032,8 @@ class HardwareCollector:
         return ram_info
 
     def get_detailed_gpu_info(self):
+        if self._closed:
+            return []
         gpu_info = []
         try:
             import GPUtil
@@ -1005,6 +1072,8 @@ class HardwareCollector:
         return gpu_info if gpu_info else [{'name': 'Not detected', 'memory_total': 0, 'load': 0, 'temperature': 0}]
 
     def get_detailed_disk_info(self):
+        if self._closed:
+            return []
         disks = []
         partitions = psutil.disk_partitions()
         for partition in partitions:
@@ -1039,6 +1108,8 @@ class HardwareCollector:
         return disks
 
     def get_network_info(self):
+        if self._closed:
+            return []
         adapters = []
         net_if_addrs = psutil.net_if_addrs()
         net_if_stats = psutil.net_if_stats()
@@ -1071,6 +1142,8 @@ class HardwareCollector:
         return self.monitors_info
 
     def collect_all(self):
+        if self._closed:
+            return {}
         self.get_all_temperatures()
         cpu = self.get_detailed_cpu_info()
         ram = self.get_detailed_ram_info()
@@ -1110,12 +1183,90 @@ class HardwareCollector:
         }
 
     def close(self):
+        self._closed = True
         if self.computer:
             try:
                 self.computer.Close()
                 print("LibreHardwareMonitor closed")
             except:
                 pass
+
+
+# ====================================================================
+# КЛАСС ДЛЯ ОДНОЙ ИКОНКИ В СИСТЕМНОМ ТРЕЕ (ТОЛЬКО ЦИФРА)
+# ====================================================================
+class TrayIconSingle:
+    """Одиночная иконка для одной метрики (CPU/RAM/GPU)."""
+    def __init__(self, app, metric, update_interval=2):
+        self.app = app
+        self.metric = metric  # 'cpu', 'ram', 'gpu'
+        self.update_interval = update_interval
+        self.icon = None
+        self.running = False
+        self.thread = None
+
+    def create_image(self, value):
+        width, height = 64, 64
+        # Цвета для каждой метрики
+        colors = {
+            'cpu': (0, 150, 0),    # зелёный
+            'ram': (0, 80, 200),   # синий
+            'gpu': (200, 100, 0)   # оранжевый
+        }
+        bg_color = colors.get(self.metric, (30, 30, 30))
+        image = Image.new('RGB', (width, height), bg_color)
+        draw = ImageDraw.Draw(image)
+        text = f"{value:.0f}"  # только цифра
+        try:
+            font = ImageFont.truetype("arial.ttf", 28)
+        except:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        draw.text((x, y), text, fill=(255, 255, 255), font=font)
+        return image
+
+    def update_icon(self):
+        if not self.icon:
+            return
+        value = self.app.current_values.get(self.metric.upper(), 0)
+        img = self.create_image(value)
+        self.icon.icon = img
+        self.icon.title = f"{self.metric.upper()}: {value:.1f}%"
+
+    def run(self):
+        def on_click(icon, item):
+            if str(item) == "Show":
+                self.app.show_window()
+            elif str(item) == "Exit":
+                self.app.quit_app()
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Show", lambda: self.app.show_window()),
+            pystray.MenuItem("Exit", lambda: self.app.quit_app())
+        )
+        img = self.create_image(0)
+        self.icon = pystray.Icon(f"system_monitor_{self.metric}", img, f"{self.metric.upper()} Monitor", menu)
+        self.running = True
+
+        def update_loop():
+            while self.running:
+                self.update_icon()
+                time.sleep(self.update_interval)
+
+        self.thread = threading.Thread(target=update_loop, daemon=True)
+        self.thread.start()
+        self.icon.run()
+
+    def stop(self):
+        self.running = False
+        if self.icon:
+            self.icon.stop()
+        if self.thread:
+            self.thread.join(timeout=1)
 
 
 class LoginWindow(ctk.CTk):
@@ -1231,12 +1382,25 @@ class MainApp(ctk.CTkToplevel):
         self.info_scroll_pos = 0.0
         self.is_updating = False
 
+        self._closing = False
+        self._after_ids = []
+
+        # Переменные для системного трея (теперь список иконок)
+        self.tray_icons = []          # список активных иконок
+        self.tray_metrics = ['cpu', 'ram', 'gpu']
+        self.tray_update_interval = 2
+        self.tray_enabled_var = tk.BooleanVar(value=False)   # состояние включения
+
         self.center_window()
         self.create_ui()
         self.start_monitoring()
-        self.after(100, self.load_initial_data)
+        after_id = self.after(100, self.load_initial_data)
+        self._after_ids.append(after_id)
         self.bind_shortcuts()
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.protocol("WM_DELETE_WINDOW", self.close_app)
+
+        # Таймер для принудительного выхода, если close_app не сработает
+        self._force_exit_timer = None
 
     def center_window(self):
         self.update_idletasks()
@@ -1289,8 +1453,11 @@ class MainApp(ctk.CTkToplevel):
         self.update_time()
 
     def update_time(self):
+        if self._closing:
+            return
         self.time_label.configure(text=datetime.now().strftime("%H:%M:%S"))
-        self.after(1000, self.update_time)
+        after_id = self.after(1000, self.update_time)
+        self._after_ids.append(after_id)
 
     # ==================== ALL DATA TAB ====================
     def create_all_data_tab(self):
@@ -1304,21 +1471,35 @@ class MainApp(ctk.CTkToplevel):
         )
         title.pack(pady=(0, 15))
 
-        scroll_frame = ctk.CTkScrollableFrame(main_container)
-        scroll_frame.pack(fill="both", expand=True)
+        canvas_frame = ctk.CTkFrame(main_container)
+        canvas_frame.pack(fill="both", expand=True)
+        
+        canvas = tk.Canvas(canvas_frame, bg="#2B2B2B", highlightthickness=0)
+        scrollbar = ctk.CTkScrollbar(canvas_frame, command=canvas.yview, orientation="vertical")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        inner_frame = ctk.CTkFrame(canvas, fg_color="transparent")
+        canvas_window = canvas.create_window((0, 0), window=inner_frame, anchor="nw", width=canvas.winfo_width())
+        
+        def configure_inner_frame(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", configure_inner_frame)
+        
+        def update_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        inner_frame.bind("<Configure>", update_scroll_region)
+        
+        self.all_data_canvas = canvas
+        self.all_data_inner_frame = inner_frame
 
-        # Сохраняем canvas для сохранения позиции прокрутки
-        self.all_data_canvas = scroll_frame._parent_canvas
-
-        # Контейнер для двух колонок (внутри scroll_frame)
-        columns_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        columns_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
         columns_frame.pack(fill="both", expand=True)
 
-        # Левая колонка – 50% ширины
         left_column = ctk.CTkFrame(columns_frame, fg_color="transparent")
         left_column.pack(side="left", fill="both", expand=True, padx=(0, 5))
-
-        # Правая колонка – 50% ширины
         right_column = ctk.CTkFrame(columns_frame, fg_color="transparent")
         right_column.pack(side="right", fill="both", expand=True, padx=(5, 0))
 
@@ -1332,7 +1513,6 @@ class MainApp(ctk.CTkToplevel):
             ("Memory (RAM)", "ram"),
             ("Monitors", "monitors")
         ]
-
         right_blocks = [
             ("Graphics (GPU)", "gpu"),
             ("Storage", "disks"),
@@ -1348,17 +1528,17 @@ class MainApp(ctk.CTkToplevel):
         for title_text, key in right_blocks:
             self.all_data_frames[key] = self.create_info_block(right_column, title_text)
             self.all_data_text_widgets[key] = self.all_data_frames[key]['text']
-
-        # Сохраняем позицию прокрутки при скролле
-        if self.all_data_canvas:
-            self.all_data_canvas.bind("<Configure>", self.on_scroll_configure)
-            self.all_data_canvas.bind("<MouseWheel>", self.on_mousewheel)
-            self.all_data_canvas.bind("<Button-4>", self.on_mousewheel)
-            self.all_data_canvas.bind("<Button-5>", self.on_mousewheel)
+        
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+        canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
 
     def create_info_block(self, parent, title):
         frame = ctk.CTkFrame(parent, corner_radius=8)
-        frame.pack(fill="x", pady=6, padx=2)  # fill="x" – растягиваем по ширине колонки
+        frame.pack(fill="x", pady=6, padx=2)
 
         title_label = ctk.CTkLabel(
             frame,
@@ -1372,7 +1552,7 @@ class MainApp(ctk.CTkToplevel):
         separator.pack(fill="x", padx=12, pady=(0, 6))
 
         content_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        content_frame.pack(fill="x", padx=12, pady=(0, 8))
+        content_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
 
         content_text = ctk.CTkTextbox(
             content_frame,
@@ -1388,23 +1568,23 @@ class MainApp(ctk.CTkToplevel):
         return {'frame': frame, 'text': content_text}
 
     def on_scroll_configure(self, event):
-        if self.all_data_canvas:
+        if hasattr(self, 'all_data_canvas') and self.all_data_canvas:
             self.scroll_position = self.all_data_canvas.yview()[0]
 
     def on_mousewheel(self, event):
         self.after(50, self.save_scroll_position)
 
     def save_scroll_position(self):
-        if self.all_data_canvas:
+        if hasattr(self, 'all_data_canvas') and self.all_data_canvas:
             self.scroll_position = self.all_data_canvas.yview()[0]
 
     def restore_scroll_position(self):
-        if self.all_data_canvas and self.scroll_position > 0:
+        if hasattr(self, 'all_data_canvas') and self.all_data_canvas and self.scroll_position > 0:
             self.all_data_canvas.yview_moveto(self.scroll_position)
 
     def update_all_data_display(self, data: Dict):
-        """Заполняет вкладку All Data – вызывается только один раз при загрузке."""
-        # Сохраняем позицию прокрутки (на случай, если она изменилась)
+        if self._closing:
+            return
         self.save_scroll_position()
         detailed_hw = data.get('detailed_hardware', {})
 
@@ -1591,8 +1771,7 @@ class MainApp(ctk.CTkToplevel):
   GPU Load               : {data.get('gpu_load', 0):.1f}%
   
   RAM Usage Details:
-     Total: {data.get('ram_total', 0):.2f} GB
-     Used: {data.get('ram_used', 0):.2f} GB
+     Total: {data.get('ram_total', 0):.2f} GB     Used: {data.get('ram_used', 0):.2f} GB
   
   Temperatures:
      CPU: {data.get('cpu_temp', 0):.1f} C
@@ -1606,6 +1785,8 @@ class MainApp(ctk.CTkToplevel):
         self.restore_scroll_position()
 
     def update_text_widget(self, text_widget, content):
+        if self._closing:
+            return
         try:
             text_widget.configure(state="normal")
             text_widget.delete("1.0", "end")
@@ -1658,6 +1839,8 @@ class MainApp(ctk.CTkToplevel):
             self.display_category_info(choice, self.current_data)
 
     def display_category_info(self, category: str, data: Dict):
+        if self._closing:
+            return
         try:
             self.info_scroll_pos = self.info_textbox.yview()[0]
         except:
@@ -2044,6 +2227,8 @@ class MainApp(ctk.CTkToplevel):
         self.extra_widgets = {}
 
     def update_temperatures_display(self, temperatures: Dict):
+        if self._closing:
+            return
         if not temperatures:
             for widget in self.temp_container.winfo_children():
                 widget.destroy()
@@ -2151,6 +2336,8 @@ class MainApp(ctk.CTkToplevel):
                     label.configure(text_color=color)
 
     def update_extra_sensors_display(self, sensors: List):
+        if self._closing:
+            return
         if not sensors:
             for widget in self.extra_container.winfo_children():
                 widget.destroy()
@@ -2318,6 +2505,7 @@ SESSION #{session.get('id', 'N/A')}
         settings_frame = ctk.CTkScrollableFrame(self.settings_tab)
         settings_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
+        # --- Appearance ---
         appearance_frame = ctk.CTkFrame(settings_frame)
         appearance_frame.pack(fill="x", pady=10)
         appearance_title = ctk.CTkLabel(
@@ -2340,6 +2528,7 @@ SESSION #{session.get('id', 'N/A')}
         )
         theme_menu.pack(side="left", padx=10)
 
+        # --- Update Interval ---
         update_frame = ctk.CTkFrame(settings_frame)
         update_frame.pack(fill="x", pady=10)
         update_title = ctk.CTkLabel(
@@ -2362,6 +2551,76 @@ SESSION #{session.get('id', 'N/A')}
         )
         interval_menu.pack(side="left", padx=10)
 
+        # --- System Tray ---
+        tray_frame = ctk.CTkFrame(settings_frame)
+        tray_frame.pack(fill="x", pady=10)
+        tray_title = ctk.CTkLabel(
+            tray_frame,
+            text="System Tray",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        tray_title.pack(pady=(10, 15))
+
+        if TRAY_AVAILABLE:
+            # Чекбокс включения трея
+            self.tray_enabled_var = tk.BooleanVar(value=False)
+            tray_check = ctk.CTkCheckBox(
+                tray_frame,
+                text="Enable system tray",
+                variable=self.tray_enabled_var,
+                command=self.on_tray_toggle
+            )
+            tray_check.pack(anchor="w", padx=20, pady=5)
+
+            # Выбор метрик для отображения
+            metrics_frame = ctk.CTkFrame(tray_frame, fg_color="transparent")
+            metrics_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(metrics_frame, text="Display metrics:").pack(anchor="w")
+
+            self.tray_metrics_vars = {}
+            for metric in ['CPU', 'RAM', 'GPU']:
+                var = tk.BooleanVar(value=True)
+                self.tray_metrics_vars[metric.lower()] = var
+                cb = ctk.CTkCheckBox(
+                    metrics_frame,
+                    text=metric,
+                    variable=var,
+                    command=self.on_tray_metrics_change
+                )
+                cb.pack(anchor="w", padx=20)
+
+            # Интервал обновления трея
+            interval_tray_frame = ctk.CTkFrame(tray_frame, fg_color="transparent")
+            interval_tray_frame.pack(fill="x", padx=20, pady=5)
+            ctk.CTkLabel(interval_tray_frame, text="Tray update interval (sec):").pack(side="left")
+            self.tray_interval_var = tk.StringVar(value="2")
+            tray_interval_menu = ctk.CTkOptionMenu(
+                interval_tray_frame,
+                values=["1", "2", "3", "5", "10"],
+                variable=self.tray_interval_var,
+                command=self.on_tray_interval_change,
+                width=100
+            )
+            tray_interval_menu.pack(side="left", padx=10)
+
+            # Кнопка "Minimize to Tray"
+            minimize_btn = ctk.CTkButton(
+                tray_frame,
+                text="Minimize to Tray",
+                command=self.minimize_to_tray
+            )
+            minimize_btn.pack(pady=10)
+        else:
+            # Если pystray не установлен
+            warn_label = ctk.CTkLabel(
+                tray_frame,
+                text="pystray (PIL) is not installed. Tray functionality disabled.",
+                text_color="orange",
+                font=ctk.CTkFont(size=12)
+            )
+            warn_label.pack(pady=10)
+
+        # --- About ---
         about_btn = ctk.CTkButton(
             settings_frame,
             text="About",
@@ -2370,6 +2629,67 @@ SESSION #{session.get('id', 'N/A')}
             height=35
         )
         about_btn.pack(pady=15)
+
+    # ===== Обработчики настроек трея =====
+    def recreate_tray_icons(self):
+        """Пересоздать иконки согласно текущим настройкам."""
+        # Останавливаем старые иконки
+        for icon in self.tray_icons:
+            try:
+                icon.stop()
+            except:
+                pass
+        self.tray_icons.clear()
+
+        if not self.tray_enabled_var.get():
+            return
+
+        # Собираем активные метрики
+        active_metrics = [k for k, v in self.tray_metrics_vars.items() if v.get()]
+        if not active_metrics:
+            return
+
+        # Создаём новые иконки
+        for metric in active_metrics:
+            icon = TrayIconSingle(self, metric, self.tray_update_interval)
+            threading.Thread(target=icon.run, daemon=True).start()
+            self.tray_icons.append(icon)
+
+    def on_tray_toggle(self):
+        """Обработчик изменения чекбокса включения трея."""
+        self.recreate_tray_icons()
+        if self.tray_enabled_var.get():
+            self.update_status("Tray enabled", "blue")
+        else:
+            self.update_status("Tray disabled", "blue")
+
+    def on_tray_metrics_change(self):
+        """При изменении выбора метрик пересоздаём иконки."""
+        if self.tray_enabled_var.get():
+            self.recreate_tray_icons()
+
+    def on_tray_interval_change(self, val):
+        """При изменении интервала обновления пересоздаём иконки."""
+        self.tray_update_interval = float(val)
+        if self.tray_enabled_var.get():
+            self.recreate_tray_icons()
+
+    def minimize_to_tray(self):
+        if not TRAY_AVAILABLE:
+            messagebox.showwarning("Not available", "pystray is not installed.")
+            return
+        if not self.tray_enabled_var.get():
+            self.tray_enabled_var.set(True)
+            self.recreate_tray_icons()
+        self.withdraw()
+
+    def show_window(self):
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def quit_app(self):
+        self.close_app(force=True)
 
     def change_theme(self, choice):
         ctk.set_appearance_mode(choice)
@@ -2381,6 +2701,7 @@ SESSION #{session.get('id', 'N/A')}
     def show_about(self):
         libre_status = "Available" if LIBRE_AVAILABLE else "Not available"
         screen_status = "Available" if SCREENINFO_AVAILABLE else "Not available"
+        tray_status = "Available" if TRAY_AVAILABLE else "Not available"
         about_text = f"""
 ============================================================
               SYSTEM MONITOR v2.0.0
@@ -2396,10 +2717,12 @@ Features:
    • Real-time monitoring
    • Database sessions
    • JSON export
+   • System tray with load display
 
 Module Status:
    • LibreHardwareMonitor: {libre_status}
    • screeninfo: {screen_status}
+   • pystray: {tray_status}
 
 Statistics:
    • Uptime: {int((time.time() - self.start_time) // 60)} minutes
@@ -2442,7 +2765,8 @@ FEATURES:
    • Detailed information per category
 
 2. ALL DATA TAB
-   • All system information in two columns
+   • Two columns each taking 50% of width
+   • Full width display
    • Static snapshot (updates only once at start)
 
 3. REAL-TIME MONITORING
@@ -2453,6 +2777,11 @@ FEATURES:
 4. DATABASE
    • Automatic session saving
    • JSON export
+
+5. SYSTEM TRAY (Settings)
+   • Show CPU/RAM/GPU load in tray icon
+   • Customizable metrics and update interval
+   • Minimize to tray
 
 QUICK START:
    Username: a
@@ -2467,6 +2796,8 @@ HOTKEYS:
 
     # ==================== MONITORING CORE ====================
     def load_initial_data(self):
+        if self._closing:
+            return
         try:
             self.db.start_session(self.username)
             data = self.collector.collect_all()
@@ -2475,7 +2806,7 @@ HOTKEYS:
 
             self.display_category_info(self.category_var.get(), data)
             self.update_temperatures_display(data.get('temperatures', {}))
-            self.update_all_data_display(data)  # заполняем вкладку All Data один раз
+            self.update_all_data_display(data)
 
             extra_sensors = self.collector.get_extra_sensors()
             self.update_extra_sensors_display(extra_sensors)
@@ -2492,22 +2823,26 @@ HOTKEYS:
 
     def monitoring_loop(self):
         last_db_save = time.time()
-        while self.running:
+        while self.running and not self._closing:
             try:
+                if self._closing:
+                    break
                 data = self.collector.collect_all()
+                if not data or self._closing:
+                    break
                 self.current_data = data
                 self.update_count += 1
                 self.target_values['CPU'] = data.get('cpu_load', 0)
                 self.target_values['RAM'] = data.get('ram_percent', 0)
                 self.target_values['GPU'] = data.get('gpu_load', 0)
 
-                # Обновляем только вкладки, которые должны обновляться в реальном времени
-                self.after(0, lambda d=data: self.update_temperatures_display(d.get('temperatures', {})))
-                self.after(0, lambda d=data: self.display_category_info(self.category_var.get(), d))
-                # НЕ вызываем update_all_data_display – она больше не обновляется
+                if not self._closing:
+                    self.after(0, lambda d=data: self.update_temperatures_display(d.get('temperatures', {})))
+                    self.after(0, lambda d=data: self.display_category_info(self.category_var.get(), d))
 
                 extra_sensors = self.collector.get_extra_sensors()
-                self.after(0, lambda s=extra_sensors: self.update_extra_sensors_display(s))
+                if not self._closing:
+                    self.after(0, lambda s=extra_sensors: self.update_extra_sensors_display(s))
 
                 current_time = time.time()
                 if current_time - last_db_save >= 60:
@@ -2517,9 +2852,14 @@ HOTKEYS:
                 pass
 
             interval = float(self.interval_var.get()) if hasattr(self, 'interval_var') else 0.5
-            time.sleep(interval)
+            for _ in range(int(interval * 10)):
+                if not self.running or self._closing:
+                    break
+                time.sleep(0.1)
 
     def animate_bars(self):
+        if self._closing:
+            return
         smoothing = 0.3
         for key in self.progress_bars:
             diff = self.target_values[key] - self.current_values[key]
@@ -2527,7 +2867,8 @@ HOTKEYS:
             value = self.current_values[key]
             self.progress_bars[key].set(min(value / 100, 1))
             self.progress_labels[key].configure(text=f"{value:.1f}%")
-        self.after(30, self.animate_bars)
+        after_id = self.after(30, self.animate_bars)
+        self._after_ids.append(after_id)
 
     def refresh_info(self):
         if self.current_data:
@@ -2536,7 +2877,7 @@ HOTKEYS:
 
     def bind_shortcuts(self):
         self.bind("<F5>", lambda e: self.refresh_info())
-        self.bind("<Control-q>", lambda e: self.on_close())
+        self.bind("<Control-q>", lambda e: self.close_app(force=True))
 
     def update_status(self, message: str, color: str = "gray"):
         colors = {
@@ -2551,18 +2892,71 @@ HOTKEYS:
             text_color=colors.get(color, "#A9A9A9")
         )
 
-    # ==================== ИСПРАВЛЕННОЕ ЗАКРЫТИЕ ====================
-    def on_close(self):
-        """Корректное закрытие приложения с ожиданием завершения потоков."""
-        self.running = False
-        if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
-            self.monitor_thread.join(timeout=0.5)
+    # ==================== ЗАКРЫТИЕ ПРИЛОЖЕНИЯ ====================
+    def close_app(self, force=False):
+        """Закрытие приложения. Если force=False и трей доступен – сворачиваем в трей."""
+        if not force and TRAY_AVAILABLE and not self._closing:
+            # Включаем трей, если он ещё не активен
+            if not self.tray_enabled_var.get():
+                self.tray_enabled_var.set(True)
+            self.withdraw()  # Скрываем окно
+            if not self.tray_icons:
+                self.recreate_tray_icons()  # Создаём иконки, если их нет
+            return
 
+        # Полное завершение (force=True или трей недоступен)
+        self._closing = True
+        self.running = False
+
+        # Отменяем все after-задачи
+        for after_id in self._after_ids:
+            try:
+                self.after_cancel(after_id)
+            except:
+                pass
+        self._after_ids.clear()
+
+        # Отвязываем глобальные события
+        try:
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
+        except:
+            pass
+
+        try:
+            self.grab_release()
+        except:
+            pass
+
+        # Останавливаем все иконки трея
+        for icon in self.tray_icons:
+            try:
+                icon.stop()
+            except:
+                pass
+        self.tray_icons.clear()
+
+        # Закрываем сборщик и БД
         if hasattr(self, 'collector'):
-            self.collector.close()
+            try:
+                self.collector.close()
+            except:
+                pass
         if hasattr(self, 'db'):
-            self.db.close()
-        self.destroy()
+            try:
+                self.db.close()
+            except:
+                pass
+
+        # Уничтожаем окно
+        try:
+            self.destroy()
+        except:
+            pass
+
+        # Принудительный выход через таймер (на всякий случай)
+        threading.Timer(0.2, force_exit).start()
 
 
 if __name__ == "__main__":
