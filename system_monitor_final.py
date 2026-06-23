@@ -10,14 +10,13 @@ import sys
 import json
 import sqlite3
 import random
-import subprocess
 from datetime import datetime
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 from typing import Dict, Any, List
 
 try:
-    from LibreHardwareMonitor import Hardware # type: ignore
-    from LibreHardwareMonitor.Hardware import Computer, SensorType # type: ignore
+    from LibreHardwareMonitor import Hardware  # type: ignore
+    from LibreHardwareMonitor.Hardware import Computer, SensorType  # type: ignore
     LIBRE_AVAILABLE = True
     print("LibreHardwareMonitor loaded")
 except ImportError:
@@ -38,21 +37,20 @@ ctk.set_default_color_theme("dark-blue")
 DB_PATH = "system_monitor.db"
 USERS = {"a": "1"}
 
+
 class Database:
     def __init__(self):
         self.conn = None
         self.session_id = None
         self.lock = threading.Lock()
         self._init_db()
-    
+
     def _init_db(self):
         try:
             self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = self.conn.cursor()
-            
             cursor.execute("PRAGMA table_info(monitoring_sessions)")
             columns = [col[1] for col in cursor.fetchall()]
-            
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS monitoring_sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,17 +72,15 @@ class Database:
                     bios_version TEXT
                 )
             """)
-            
             if 'motherboard_model' not in columns:
                 cursor.execute("ALTER TABLE monitoring_sessions ADD COLUMN motherboard_model TEXT")
             if 'bios_version' not in columns:
                 cursor.execute("ALTER TABLE monitoring_sessions ADD COLUMN bios_version TEXT")
-            
             self.conn.commit()
             print("Database initialized")
         except Exception as e:
             print(f"DB init error: {e}")
-    
+
     def start_session(self, username: str = ""):
         with self.lock:
             try:
@@ -99,22 +95,21 @@ class Database:
             except Exception as e:
                 print(f"Session start error: {e}")
                 return None
-    
+
     def end_session(self):
         if self.session_id:
             with self.lock:
                 try:
                     cursor = self.conn.cursor()
-                    cursor.execute("UPDATE monitoring_sessions SET end_time = ? WHERE id = ?", 
-                                 (datetime.now().isoformat(), self.session_id))
+                    cursor.execute("UPDATE monitoring_sessions SET end_time = ? WHERE id = ?",
+                                   (datetime.now().isoformat(), self.session_id))
                     self.conn.commit()
                 except Exception as e:
                     print(f"Session end error: {e}")
-    
+
     def save_data(self, data: Dict[str, Any]):
         if not self.session_id:
             self.start_session()
-        
         with self.lock:
             try:
                 cursor = self.conn.cursor()
@@ -142,7 +137,7 @@ class Database:
                 self.conn.commit()
             except Exception as e:
                 print(f"Save data error: {e}")
-    
+
     def get_all_sessions(self, limit: int = 10):
         with self.lock:
             try:
@@ -155,12 +150,12 @@ class Database:
                     ORDER BY id DESC LIMIT ?
                 """, (limit,))
                 rows = cursor.fetchall()
-                return [{'id': r[0], 'start_time': r[1], 'end_time': r[2], 
-                        'username': r[3], 'cpu_load': r[4] or 0, 'ram_percent': r[5] or 0} for r in rows]
+                return [{'id': r[0], 'start_time': r[1], 'end_time': r[2],
+                         'username': r[3], 'cpu_load': r[4] or 0, 'ram_percent': r[5] or 0} for r in rows]
             except Exception as e:
                 print(f"Get sessions error: {e}")
                 return []
-    
+
     def export_to_json(self, filepath: str):
         with self.lock:
             try:
@@ -171,12 +166,13 @@ class Database:
             except Exception as e:
                 print(f"Export error: {e}")
                 return False
-    
+
     def close(self):
         with self.lock:
             if self.conn:
                 self.end_session()
                 self.conn.close()
+
 
 class HardwareCollector:
     def __init__(self):
@@ -191,7 +187,7 @@ class HardwareCollector:
         self._collect_monitors_info()
         self._collect_extra_sensors()
         self._collect_detailed_hardware()
-    
+
     def _init_libre_hardware(self):
         if LIBRE_AVAILABLE:
             try:
@@ -204,7 +200,6 @@ class HardwareCollector:
                 self.computer.IsNetworkEnabled = True
                 self.computer.Open()
                 print("LibreHardwareMonitor initialized")
-                
                 try:
                     for hardware in self.computer.Hardware:
                         hardware.Update()
@@ -214,18 +209,14 @@ class HardwareCollector:
                                 print(f"    Temp sensor: {sensor.Name}")
                 except Exception as e:
                     print(f"  Test error: {e}")
-                    
             except Exception as e:
                 print(f"LibreHardwareMonitor init error: {e}")
                 self.computer = None
         else:
             print("LibreHardwareMonitor not available")
-    
+
     def _collect_detailed_hardware(self):
-        """Сбор максимально подробной информации о комплектующих"""
         self.detailed_hardware = {}
-        
-        # CPU информация через WMI
         try:
             import wmi
             w = wmi.WMI()
@@ -260,8 +251,7 @@ class HardwareCollector:
                 break
         except:
             self.detailed_hardware['cpu'] = {'name': platform.processor()}
-        
-        # RAM информация через WMI
+
         try:
             import wmi
             w = wmi.WMI()
@@ -269,7 +259,7 @@ class HardwareCollector:
             for module in w.Win32_PhysicalMemory():
                 memory_modules.append({
                     'bank': module.BankLabel,
-                    'capacity': int(module.Capacity) / (1024**3),
+                    'capacity': int(module.Capacity) / (1024 ** 3),
                     'speed': module.Speed,
                     'manufacturer': module.Manufacturer,
                     'model': module.PartNumber,
@@ -293,8 +283,7 @@ class HardwareCollector:
             self.detailed_hardware['memory'] = memory_modules
         except:
             self.detailed_hardware['memory'] = []
-        
-        # GPU информация через WMI
+
         try:
             import wmi
             w = wmi.WMI()
@@ -305,7 +294,7 @@ class HardwareCollector:
                         'name': gpu.Name,
                         'driver_version': gpu.DriverVersion,
                         'driver_date': gpu.DriverDate,
-                        'memory': int(gpu.AdapterRAM) / (1024**3) if gpu.AdapterRAM else 0,
+                        'memory': int(gpu.AdapterRAM) / (1024 ** 3) if gpu.AdapterRAM else 0,
                         'current_horizontal_res': gpu.CurrentHorizontalResolution,
                         'current_vertical_res': gpu.CurrentVerticalResolution,
                         'current_refresh_rate': gpu.CurrentRefreshRate,
@@ -327,8 +316,7 @@ class HardwareCollector:
             self.detailed_hardware['gpu'] = gpu_devices
         except:
             self.detailed_hardware['gpu'] = []
-        
-        # Диски через WMI
+
         try:
             import wmi
             w = wmi.WMI()
@@ -337,7 +325,7 @@ class HardwareCollector:
                 disk_devices.append({
                     'model': disk.Model,
                     'manufacturer': disk.Manufacturer,
-                    'size': int(disk.Size) / (1024**3) if disk.Size else 0,
+                    'size': int(disk.Size) / (1024 ** 3) if disk.Size else 0,
                     'interface_type': disk.InterfaceType,
                     'media_type': disk.MediaType,
                     'partitions': disk.Partitions,
@@ -356,8 +344,7 @@ class HardwareCollector:
             self.detailed_hardware['disks'] = disk_devices
         except:
             self.detailed_hardware['disks'] = []
-        
-        # Материнская плата через WMI
+
         try:
             import wmi
             w = wmi.WMI()
@@ -391,8 +378,7 @@ class HardwareCollector:
                 break
         except:
             self.detailed_hardware['motherboard'] = {}
-        
-        # BIOS через WMI
+
         try:
             import wmi
             w = wmi.WMI()
@@ -422,8 +408,7 @@ class HardwareCollector:
                 break
         except:
             self.detailed_hardware['bios'] = {}
-        
-        # Сетевое оборудование
+
         try:
             import wmi
             w = wmi.WMI()
@@ -451,11 +436,10 @@ class HardwareCollector:
             self.detailed_hardware['network'] = network_devices
         except:
             self.detailed_hardware['network'] = []
-    
+
     def _collect_monitors_info(self):
         self.monitors_info = []
         monitor_data = []
-        
         if SCREENINFO_AVAILABLE:
             try:
                 monitors = screeninfo.get_monitors()
@@ -476,7 +460,7 @@ class HardwareCollector:
                 print(f"Found {len(monitor_data)} monitors (screeninfo)")
             except Exception as e:
                 print(f"screeninfo error: {e}")
-        
+
         try:
             import wmi
             w = wmi.WMI()
@@ -485,7 +469,6 @@ class HardwareCollector:
                 is_primary = False
                 if hasattr(monitor, 'IsPrimary') and monitor.IsPrimary:
                     is_primary = True
-                
                 info = {
                     'id': len(monitor_data) + 1,
                     'name': monitor_name,
@@ -494,7 +477,6 @@ class HardwareCollector:
                     'is_primary': is_primary,
                     'source': 'WMI'
                 }
-                
                 if hasattr(monitor, 'MonitorManufacturerName'):
                     info['manufacturer'] = monitor.MonitorManufacturerName
                 if hasattr(monitor, 'MonitorProductName'):
@@ -503,14 +485,12 @@ class HardwareCollector:
                     info['product_id'] = monitor.MonitorProductID
                 if hasattr(monitor, 'MonitorSerialNumberID'):
                     info['serial'] = monitor.MonitorSerialNumberID
-                
                 monitor_data.append(info)
-            
             if monitor_data:
                 print(f"Added WMI monitor info")
         except:
             pass
-        
+
         if not monitor_data:
             try:
                 root = tk.Tk()
@@ -529,7 +509,7 @@ class HardwareCollector:
                 print(f"Found monitor via tkinter: {screen_width}x{screen_height}")
             except:
                 pass
-        
+
         if not monitor_data:
             try:
                 import pyautogui
@@ -545,45 +525,42 @@ class HardwareCollector:
                 print(f"Found monitor via pyautogui: {screen_width}x{screen_height}")
             except:
                 pass
-        
+
         if not monitor_data:
             monitor_data = [{
-                'id': 1, 
-                'name': 'Primary Monitor', 
-                'width': 1920, 
-                'height': 1080, 
+                'id': 1,
+                'name': 'Primary Monitor',
+                'width': 1920,
+                'height': 1080,
                 'is_primary': True,
                 'source': 'default'
             }]
             print("Using default monitor info")
-        
+
         for monitor in monitor_data:
             if monitor.get('width') and monitor.get('height'):
                 if monitor.get('width_mm') and monitor.get('height_mm'):
-                    diag_mm = (monitor['width_mm']**2 + monitor['height_mm']**2) ** 0.5
+                    diag_mm = (monitor['width_mm'] ** 2 + monitor['height_mm'] ** 2) ** 0.5
                     monitor['diagonal_inches'] = round(diag_mm / 25.4, 1)
-                
                 if monitor.get('width_mm') and monitor.get('width'):
                     monitor['ppi'] = round(monitor['width'] / (monitor['width_mm'] / 25.4), 1)
-                
                 ratio = monitor['width'] / monitor['height']
-                if abs(ratio - 16/9) < 0.1:
+                if abs(ratio - 16 / 9) < 0.1:
                     monitor['aspect_ratio'] = '16:9'
-                elif abs(ratio - 16/10) < 0.1:
+                elif abs(ratio - 16 / 10) < 0.1:
                     monitor['aspect_ratio'] = '16:10'
-                elif abs(ratio - 4/3) < 0.1:
+                elif abs(ratio - 4 / 3) < 0.1:
                     monitor['aspect_ratio'] = '4:3'
-                elif abs(ratio - 21/9) < 0.1:
+                elif abs(ratio - 21 / 9) < 0.1:
                     monitor['aspect_ratio'] = '21:9'
                 else:
-                    monitor['aspect_ratio'] = f'{round(ratio*100)/100:.2f}:1'
-        
+                    monitor['aspect_ratio'] = f'{round(ratio * 100) / 100:.2f}:1'
+
         self.monitors_info = monitor_data
         print(f"Total monitors: {len(self.monitors_info)}")
-    
+
     def _collect_extra_sensors(self):
         self.extra_sensors = []
-        
         if self.computer:
             try:
                 for hardware in self.computer.Hardware:
@@ -593,7 +570,6 @@ class HardwareCollector:
                             sensor_type = str(sensor.SensorType)
                             name = str(sensor.Name)
                             value = float(sensor.Value)
-                            
                             if 'Fan' in sensor_type or 'Fan' in name:
                                 if 0 < value < 20000:
                                     self.extra_sensors.append({
@@ -602,7 +578,6 @@ class HardwareCollector:
                                         'value': value,
                                         'unit': 'RPM'
                                     })
-                            
                             elif 'Voltage' in sensor_type or 'Voltage' in name:
                                 if 0 < value < 20:
                                     self.extra_sensors.append({
@@ -611,7 +586,6 @@ class HardwareCollector:
                                         'value': value,
                                         'unit': 'V'
                                     })
-                            
                             elif 'Power' in sensor_type or 'Power' in name:
                                 if 0 < value < 1000:
                                     self.extra_sensors.append({
@@ -620,7 +594,6 @@ class HardwareCollector:
                                         'value': value,
                                         'unit': 'W'
                                     })
-                            
                             elif 'Clock' in sensor_type or 'Clock' in name or 'Frequency' in sensor_type:
                                 if 'Memory' not in name and 0 < value < 10000:
                                     self.extra_sensors.append({
@@ -629,7 +602,6 @@ class HardwareCollector:
                                         'value': value / 1000,
                                         'unit': 'GHz'
                                     })
-                            
                             elif 'Load' in sensor_type or 'Load' in name:
                                 if 0 < value < 101:
                                     self.extra_sensors.append({
@@ -641,28 +613,25 @@ class HardwareCollector:
                 print(f"Found {len(self.extra_sensors)} extra sensors")
             except Exception as e:
                 print(f"Extra sensors error: {e}")
-    
+
     def _collect_system_info(self):
         try:
             import wmi
             w = wmi.WMI()
-            
             for board in w.Win32_BaseBoard():
                 self.system_info['motherboard_manufacturer'] = board.Manufacturer or 'N/A'
                 self.system_info['motherboard_model'] = board.Product or 'N/A'
                 self.system_info['motherboard_version'] = board.Version or 'N/A'
                 self.system_info['motherboard_serial'] = board.SerialNumber or 'N/A'
-            
             for bios in w.Win32_BIOS():
                 self.system_info['bios_manufacturer'] = bios.Manufacturer or 'N/A'
                 self.system_info['bios_version'] = bios.SMBIOSBIOSVersion or 'N/A'
                 self.system_info['bios_date'] = str(bios.ReleaseDate)[:10] if bios.ReleaseDate else 'N/A'
-            
             for cs in w.Win32_ComputerSystem():
                 self.system_info['system_manufacturer'] = cs.Manufacturer or 'N/A'
                 self.system_info['system_model'] = cs.Model or 'N/A'
                 self.system_info['system_type'] = cs.SystemType or 'N/A'
-                self.system_info['total_physical_memory'] = int(cs.TotalPhysicalMemory) / (1024**3) if cs.TotalPhysicalMemory else 0
+                self.system_info['total_physical_memory'] = int(cs.TotalPhysicalMemory) / (1024 ** 3) if cs.TotalPhysicalMemory else 0
                 self.system_info['domain'] = cs.Domain or 'N/A'
                 self.system_info['workgroup'] = cs.Workgroup or 'N/A'
                 self.system_info['current_time_zone'] = cs.CurrentTimeZone or 'N/A'
@@ -677,13 +646,11 @@ class HardwareCollector:
         except:
             self.system_info['motherboard_model'] = 'N/A'
             self.system_info['bios_version'] = 'N/A'
-    
+
     def get_all_temperatures_libre(self):
         temps = {}
-        
         if not self.computer:
             return temps
-        
         try:
             for hardware in self.computer.Hardware:
                 hardware.Update()
@@ -691,17 +658,14 @@ class HardwareCollector:
                     if sensor.SensorType == SensorType.Temperature and sensor.Value is not None:
                         temp = float(sensor.Value)
                         if 0 < temp < 120:
-                            name = str(sensor.Name)
-                            temps[name] = temp
+                            temps[str(sensor.Name)] = temp
         except Exception as e:
             print(f"Temp read error: {e}")
-        
         return temps
-    
+
     def get_cpu_temperature_libre(self):
         if not self.computer:
             return 0
-        
         try:
             max_temp = 0
             for hardware in self.computer.Hardware:
@@ -716,11 +680,10 @@ class HardwareCollector:
             return max_temp
         except:
             return 0
-    
+
     def get_gpu_temperature_libre(self):
         if not self.computer:
             return 0
-        
         try:
             for hardware in self.computer.Hardware:
                 hardware.Update()
@@ -734,12 +697,11 @@ class HardwareCollector:
             return 0
         except:
             return 0
-    
+
     def get_cpu_temperature(self):
         temp = self.get_cpu_temperature_libre()
         if temp > 0:
             return temp
-        
         try:
             import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
@@ -749,19 +711,17 @@ class HardwareCollector:
                     return float(sensor.Value)
         except:
             pass
-        
         try:
             import wmi
             w = wmi.WMI(namespace="root\\WMI")
             temperatures = w.MSAcpi_ThermalZoneTemperature()
             if temperatures:
-                for temp in temperatures:
-                    value = temp.CurrentTemperature / 10.0 - 273.15
+                for temp_obj in temperatures:
+                    value = temp_obj.CurrentTemperature / 10.0 - 273.15
                     if 20 < value < 100:
                         return value
         except:
             pass
-        
         try:
             if hasattr(psutil, "sensors_temperatures"):
                 temps = psutil.sensors_temperatures()
@@ -772,14 +732,12 @@ class HardwareCollector:
                                 return entry.current
         except:
             pass
-        
         return 45 + random.randint(-5, 15)
-    
+
     def get_gpu_temperature(self):
         temp = self.get_gpu_temperature_libre()
         if temp > 0:
             return temp
-        
         try:
             import GPUtil
             gpus = GPUtil.getGPUs()
@@ -787,7 +745,6 @@ class HardwareCollector:
                 return gpus[0].temperature
         except:
             pass
-        
         try:
             import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
@@ -797,12 +754,10 @@ class HardwareCollector:
                     return float(sensor.Value)
         except:
             pass
-        
         return 0
-    
+
     def get_motherboard_temperatures(self):
         temps = {}
-        
         if self.computer:
             try:
                 for hardware in self.computer.Hardware:
@@ -816,7 +771,6 @@ class HardwareCollector:
                                     temps[f'MB: {sensor.Name}'] = temp
             except:
                 pass
-        
         try:
             import wmi
             w = wmi.WMI(namespace="root\\WMI")
@@ -826,7 +780,7 @@ class HardwareCollector:
                     try:
                         temp = zone.CurrentTemperature / 10.0 - 273.15
                         if 20 < temp < 100:
-                            zone_name = getattr(zone, 'InstanceName', f'Thermal Zone {i+1}')
+                            zone_name = getattr(zone, 'InstanceName', f'Thermal Zone {i + 1}')
                             if '\\' in zone_name:
                                 zone_name = zone_name.split('\\')[-1]
                             temps[f'Thermal: {zone_name}'] = temp
@@ -834,12 +788,10 @@ class HardwareCollector:
                         pass
         except:
             pass
-        
         return temps
-    
+
     def get_disk_temperatures(self):
         temps = {}
-        
         if self.computer:
             try:
                 for hardware in self.computer.Hardware:
@@ -853,7 +805,6 @@ class HardwareCollector:
                                     temps[f'Disk: {sensor.Name}'] = temp
             except:
                 pass
-        
         try:
             import wmi
             w = wmi.WMI(namespace="root\\WMI")
@@ -876,12 +827,10 @@ class HardwareCollector:
                                 temps[f'Disk: {disk_model}'] = temp
         except:
             pass
-        
         return temps
-    
+
     def get_cpu_core_temperatures(self):
         temps = {}
-        
         if self.computer:
             try:
                 for hardware in self.computer.Hardware:
@@ -896,7 +845,6 @@ class HardwareCollector:
                                     temps[f'Core: {core_name}'] = temp
             except:
                 pass
-        
         if not temps:
             try:
                 import wmi
@@ -912,13 +860,11 @@ class HardwareCollector:
                                 core_temps[core_name] = temp
                         except:
                             pass
-                
                 if core_temps:
                     for core_name, temp in core_temps.items():
                         temps[f'Core: {core_name}'] = temp
             except:
                 pass
-        
         if not temps:
             cpu_temp = self.get_cpu_temperature()
             if cpu_temp > 0:
@@ -926,45 +872,38 @@ class HardwareCollector:
                 cores_count = cpu_info.get('physical_cores', 4)
                 for i in range(min(cores_count, 8)):
                     variation = random.randint(-3, 3)
-                    temps[f'Core {i+1}'] = max(25, min(95, cpu_temp + variation))
-        
+                    temps[f'Core {i + 1}'] = max(25, min(95, cpu_temp + variation))
         return temps
-    
+
     def get_all_temperatures_enhanced(self):
         all_temps = {}
-        
         libre_temps = self.get_all_temperatures_libre()
-        
         cpu_temp = self.get_cpu_temperature()
         gpu_temp = self.get_gpu_temperature()
-        
         if cpu_temp > 0:
             all_temps['CPU'] = cpu_temp
         if gpu_temp > 0:
             all_temps['GPU'] = gpu_temp
-        
         all_temps.update(self.get_cpu_core_temperatures())
         all_temps.update(self.get_motherboard_temperatures())
         all_temps.update(self.get_disk_temperatures())
-        
         for name, temp in libre_temps.items():
             if name not in all_temps:
                 if 'CPU' not in name and 'GPU' not in name:
                     all_temps[name] = temp
-        
         self.all_temperatures = {k: v for k, v in all_temps.items() if v > 0}
         return self.all_temperatures
-    
+
     def get_all_temperatures(self):
         return self.get_all_temperatures_enhanced()
-    
+
     def get_extra_sensors(self):
         self._collect_extra_sensors()
         return self.extra_sensors
-    
+
     def get_detailed_hardware(self):
         return self.detailed_hardware
-    
+
     def get_detailed_cpu_info(self):
         cpu_info = {
             'name': platform.processor() or 'Unknown CPU',
@@ -981,13 +920,11 @@ class HardwareCollector:
             'load': psutil.cpu_percent(interval=0.3),
             'temperature': self.all_temperatures.get('CPU', self.get_cpu_temperature())
         }
-        
         cpu_freq = psutil.cpu_freq()
         if cpu_freq:
             cpu_info['current_frequency'] = cpu_freq.current
             cpu_info['max_frequency'] = cpu_freq.max
             cpu_info['min_frequency'] = cpu_freq.min
-        
         try:
             import wmi
             w = wmi.WMI()
@@ -999,28 +936,26 @@ class HardwareCollector:
                 break
         except:
             pass
-        
         return cpu_info
-    
+
     def get_detailed_ram_info(self):
         mem = psutil.virtual_memory()
         ram_info = {
-            'total': mem.total / (1024**3),
-            'used': mem.used / (1024**3),
-            'available': mem.available / (1024**3),
+            'total': mem.total / (1024 ** 3),
+            'used': mem.used / (1024 ** 3),
+            'available': mem.available / (1024 ** 3),
             'percent': mem.percent,
             'modules': [],
             'total_slots': 0,
             'used_slots': 0
         }
-        
         try:
             import wmi
             w = wmi.WMI()
             for module in w.Win32_PhysicalMemory():
                 ram_info['modules'].append({
                     'bank': module.BankLabel or 'N/A',
-                    'size': int(module.Capacity) / (1024**3),
+                    'size': int(module.Capacity) / (1024 ** 3),
                     'speed': module.Speed or 'N/A',
                     'manufacturer': module.Manufacturer or 'N/A',
                     'model': module.PartNumber or 'N/A'
@@ -1029,12 +964,10 @@ class HardwareCollector:
             ram_info['used_slots'] = len(ram_info['modules'])
         except:
             pass
-        
         return ram_info
-    
+
     def get_detailed_gpu_info(self):
         gpu_info = []
-        
         try:
             import GPUtil
             gpus = GPUtil.getGPUs()
@@ -1051,7 +984,6 @@ class HardwareCollector:
                 })
         except:
             pass
-        
         if not gpu_info:
             try:
                 import wmi
@@ -1061,7 +993,7 @@ class HardwareCollector:
                         gpu_info.append({
                             'index': 0,
                             'name': gpu.Name,
-                            'memory_total': int(gpu.AdapterRAM) / (1024**3) if gpu.AdapterRAM else 0,
+                            'memory_total': int(gpu.AdapterRAM) / (1024 ** 3) if gpu.AdapterRAM else 0,
                             'memory_used': 0,
                             'memory_free': 0,
                             'load': 0,
@@ -1070,13 +1002,11 @@ class HardwareCollector:
                         })
             except:
                 pass
-        
         return gpu_info if gpu_info else [{'name': 'Not detected', 'memory_total': 0, 'load': 0, 'temperature': 0}]
-    
+
     def get_detailed_disk_info(self):
         disks = []
         partitions = psutil.disk_partitions()
-        
         for partition in partitions:
             try:
                 usage = psutil.disk_usage(partition.mountpoint)
@@ -1084,16 +1014,15 @@ class HardwareCollector:
                     'device': partition.device,
                     'mount': partition.mountpoint,
                     'filesystem': partition.fstype,
-                    'total': usage.total / (1024**3),
-                    'used': usage.used / (1024**3),
-                    'free': usage.free / (1024**3),
+                    'total': usage.total / (1024 ** 3),
+                    'used': usage.used / (1024 ** 3),
+                    'free': usage.free / (1024 ** 3),
                     'percent': usage.percent,
                     'type': 'SSD' if 'SSD' in partition.device or 'NVMe' in partition.device else 'HDD',
                     'temperature': 0,
                     'model': 'N/A',
                     'interface': 'N/A'
                 }
-                
                 try:
                     import wmi
                     w = wmi.WMI()
@@ -1104,23 +1033,19 @@ class HardwareCollector:
                             break
                 except:
                     pass
-                
                 disks.append(disk_info)
             except:
                 continue
-        
         return disks
-    
+
     def get_network_info(self):
         adapters = []
         net_if_addrs = psutil.net_if_addrs()
         net_if_stats = psutil.net_if_stats()
         net_io = psutil.net_io_counters(pernic=True)
-        
         for name, addrs in net_if_addrs.items():
             if 'Loopback' in name or 'lo' in name:
                 continue
-                
             adapter = {
                 'name': name,
                 'status': 'Active' if net_if_stats.get(name, {}).isup else 'Inactive',
@@ -1129,11 +1054,9 @@ class HardwareCollector:
                 'ipv6': '',
                 'speed': f"{net_if_stats.get(name, {}).speed} Mbps" if name in net_if_stats else 'N/A'
             }
-            
             if name in net_io:
-                adapter['bytes_sent'] = net_io[name].bytes_sent / (1024**2)
-                adapter['bytes_recv'] = net_io[name].bytes_recv / (1024**2)
-            
+                adapter['bytes_sent'] = net_io[name].bytes_sent / (1024 ** 2)
+                adapter['bytes_recv'] = net_io[name].bytes_recv / (1024 ** 2)
             for addr in addrs:
                 if addr.family == psutil.AF_LINK:
                     adapter['mac'] = addr.address
@@ -1141,17 +1064,14 @@ class HardwareCollector:
                     adapter['ipv4'] = addr.address
                 elif addr.family == socket.AF_INET6:
                     adapter['ipv6'] = addr.address[:20] + '...' if len(addr.address) > 20 else addr.address
-            
             adapters.append(adapter)
-        
         return adapters
-    
+
     def get_monitors_info(self):
         return self.monitors_info
-    
+
     def collect_all(self):
         self.get_all_temperatures()
-        
         cpu = self.get_detailed_cpu_info()
         ram = self.get_detailed_ram_info()
         gpu_list = self.get_detailed_gpu_info()
@@ -1160,13 +1080,10 @@ class HardwareCollector:
         monitors = self.get_monitors_info()
         extra_sensors = self.get_extra_sensors()
         detailed_hw = self.get_detailed_hardware()
-        
         cpu['temperature'] = self.all_temperatures.get('CPU', 0)
-        
         for gpu in gpu_list:
             if gpu.get('temperature', 0) == 0:
                 gpu['temperature'] = self.all_temperatures.get('GPU', 0)
-        
         return {
             'timestamp': datetime.now().isoformat(),
             'system_info': self.system_info,
@@ -1191,7 +1108,7 @@ class HardwareCollector:
             'gpu_temp': gpu_list[0]['temperature'] if gpu_list else 0,
             'gpu_load': gpu_list[0]['load'] if gpu_list else 0
         }
-    
+
     def close(self):
         if self.computer:
             try:
@@ -1200,25 +1117,22 @@ class HardwareCollector:
             except:
                 pass
 
+
 class LoginWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Login - System Monitor")
         self.geometry("450x400")
         self.resizable(False, False)
-        
         self.center_window()
-        
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.main_frame.pack(fill="both", expand=True, padx=40, pady=30)
-        
         self.title_label = ctk.CTkLabel(
             self.main_frame,
             text="SYSTEM MONITOR",
             font=ctk.CTkFont(size=24, weight="bold")
         )
         self.title_label.pack(pady=(0, 10))
-        
         self.subtitle_label = ctk.CTkLabel(
             self.main_frame,
             text="Professional System Monitoring",
@@ -1226,7 +1140,6 @@ class LoginWindow(ctk.CTk):
             text_color="gray"
         )
         self.subtitle_label.pack(pady=(0, 30))
-        
         self.username_entry = ctk.CTkEntry(
             self.main_frame,
             placeholder_text="Username",
@@ -1235,7 +1148,6 @@ class LoginWindow(ctk.CTk):
             font=ctk.CTkFont(size=14)
         )
         self.username_entry.pack(pady=(0, 15))
-        
         self.password_entry = ctk.CTkEntry(
             self.main_frame,
             placeholder_text="Password",
@@ -1245,10 +1157,8 @@ class LoginWindow(ctk.CTk):
             font=ctk.CTkFont(size=14)
         )
         self.password_entry.pack(pady=(0, 20))
-        
         self.button_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.button_frame.pack(fill="x", pady=10)
-        
         self.login_btn = ctk.CTkButton(
             self.button_frame,
             text="Login",
@@ -1259,7 +1169,6 @@ class LoginWindow(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold")
         )
         self.login_btn.pack(side="left", padx=(0, 10), expand=True, fill="x")
-        
         self.exit_btn = ctk.CTkButton(
             self.button_frame,
             text="Exit",
@@ -1270,14 +1179,12 @@ class LoginWindow(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold")
         )
         self.exit_btn.pack(side="left", padx=(10, 0), expand=True, fill="x")
-        
         self.error_label = ctk.CTkLabel(self.main_frame, text="", text_color="#FF4444", font=ctk.CTkFont(size=12))
         self.error_label.pack(pady=10)
-        
         self.username_entry.focus()
         self.username_entry.bind("<Return>", lambda e: self.password_entry.focus())
         self.password_entry.bind("<Return>", lambda e: self.login())
-    
+
     def center_window(self):
         self.update_idletasks()
         width = 450
@@ -1285,11 +1192,10 @@ class LoginWindow(ctk.CTk):
         x = (self.winfo_screenwidth() // 2) - (width // 2)
         y = (self.winfo_screenheight() // 2) - (height // 2)
         self.geometry(f'{width}x{height}+{x}+{y}')
-    
+
     def login(self):
         username = self.username_entry.get().strip()
         password = self.password_entry.get().strip()
-        
         if USERS.get(username) == password:
             self.withdraw()
             main_app = MainApp(self, username)
@@ -1301,13 +1207,14 @@ class LoginWindow(ctk.CTk):
             self.password_entry.delete(0, 'end')
             self.username_entry.focus()
 
+
 class MainApp(ctk.CTkToplevel):
     def __init__(self, parent, username: str):
         super().__init__(parent)
         self.title(f"System Monitor - {username}")
         self.geometry("1400x850")
         self.minsize(1100, 700)
-        
+
         self.username = username
         self.db = Database()
         self.collector = HardwareCollector()
@@ -1315,21 +1222,22 @@ class MainApp(ctk.CTkToplevel):
         self.update_count = 0
         self.start_time = time.time()
         self.current_data = {}
-        
+
         self.current_values = {'CPU': 0, 'RAM': 0, 'GPU': 0}
         self.target_values = {'CPU': 0, 'RAM': 0, 'GPU': 0}
-        
+
         self.temp_widgets = {}
         self.scroll_position = 0.0
+        self.info_scroll_pos = 0.0
         self.is_updating = False
-        
+
         self.center_window()
         self.create_ui()
         self.start_monitoring()
         self.after(100, self.load_initial_data)
         self.bind_shortcuts()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-    
+
     def center_window(self):
         self.update_idletasks()
         width = 1400
@@ -1337,31 +1245,31 @@ class MainApp(ctk.CTkToplevel):
         x = (self.winfo_screenwidth() // 2) - (width // 2)
         y = (self.winfo_screenheight() // 2) - (height // 2)
         self.geometry(f'{width}x{height}+{x}+{y}')
-    
+
     def create_ui(self):
         self.main_container = ctk.CTkFrame(self)
         self.main_container.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         self.tabview = ctk.CTkTabview(self.main_container)
         self.tabview.pack(fill="both", expand=True)
-        
+
         self.info_tab = self.tabview.add("System Info")
         self.monitor_tab = self.tabview.add("Monitoring")
         self.database_tab = self.tabview.add("Database")
         self.settings_tab = self.tabview.add("Settings")
         self.all_data_tab = self.tabview.add("All Data")
         self.help_tab = self.tabview.add("Help")
-        
+
         self.create_system_info_tab()
         self.create_monitor_tab()
         self.create_database_tab()
         self.create_settings_tab()
         self.create_all_data_tab()
         self.create_help_tab()
-        
+
         self.status_frame = ctk.CTkFrame(self, height=35, fg_color="#2B2B2B")
         self.status_frame.pack(side="bottom", fill="x")
-        
+
         self.status_label = ctk.CTkLabel(
             self.status_frame,
             text="System ready",
@@ -1369,7 +1277,7 @@ class MainApp(ctk.CTkToplevel):
             text_color="#90EE90"
         )
         self.status_label.pack(side="left", padx=15, pady=8)
-        
+
         self.time_label = ctk.CTkLabel(
             self.status_frame,
             text=datetime.now().strftime("%H:%M:%S"),
@@ -1377,41 +1285,46 @@ class MainApp(ctk.CTkToplevel):
             text_color="gray"
         )
         self.time_label.pack(side="right", padx=15, pady=8)
-        
+
         self.update_time()
-    
+
     def update_time(self):
         self.time_label.configure(text=datetime.now().strftime("%H:%M:%S"))
         self.after(1000, self.update_time)
-    
+
+    # ==================== ALL DATA TAB ====================
     def create_all_data_tab(self):
-        main_scroll = ctk.CTkScrollableFrame(self.all_data_tab)
-        main_scroll.pack(fill="both", expand=True, padx=15, pady=15)
-        
-        self.all_data_scroll = main_scroll
-        
-        # Сохраняем ссылку на canvas для управления прокруткой
-        self.all_data_canvas = main_scroll._parent_canvas
-        
+        main_container = ctk.CTkFrame(self.all_data_tab)
+        main_container.pack(fill="both", expand=True, padx=10, pady=10)
+
         title = ctk.CTkLabel(
-            main_scroll,
+            main_container,
             text="SYSTEM INFORMATION",
             font=ctk.CTkFont(size=22, weight="bold")
         )
-        title.pack(pady=(0, 20))
-        
-        columns_frame = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        title.pack(pady=(0, 15))
+
+        scroll_frame = ctk.CTkScrollableFrame(main_container)
+        scroll_frame.pack(fill="both", expand=True)
+
+        # Сохраняем canvas для сохранения позиции прокрутки
+        self.all_data_canvas = scroll_frame._parent_canvas
+
+        # Контейнер для двух колонок (внутри scroll_frame)
+        columns_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
         columns_frame.pack(fill="both", expand=True)
-        
+
+        # Левая колонка – 50% ширины
         left_column = ctk.CTkFrame(columns_frame, fg_color="transparent")
         left_column.pack(side="left", fill="both", expand=True, padx=(0, 5))
-        
+
+        # Правая колонка – 50% ширины
         right_column = ctk.CTkFrame(columns_frame, fg_color="transparent")
         right_column.pack(side="right", fill="both", expand=True, padx=(5, 0))
-        
+
         self.all_data_frames = {}
         self.all_data_text_widgets = {}
-        
+
         left_blocks = [
             ("OS & Platform", "os"),
             ("Motherboard & BIOS", "motherboard"),
@@ -1419,7 +1332,7 @@ class MainApp(ctk.CTkToplevel):
             ("Memory (RAM)", "ram"),
             ("Monitors", "monitors")
         ]
-        
+
         right_blocks = [
             ("Graphics (GPU)", "gpu"),
             ("Storage", "disks"),
@@ -1427,79 +1340,74 @@ class MainApp(ctk.CTkToplevel):
             ("Temperatures", "temperatures"),
             ("Resource Usage", "resources")
         ]
-        
+
         for title_text, key in left_blocks:
             self.all_data_frames[key] = self.create_info_block(left_column, title_text)
             self.all_data_text_widgets[key] = self.all_data_frames[key]['text']
-        
+
         for title_text, key in right_blocks:
             self.all_data_frames[key] = self.create_info_block(right_column, title_text)
             self.all_data_text_widgets[key] = self.all_data_frames[key]['text']
-        
-        # Отслеживаем изменения прокрутки
+
+        # Сохраняем позицию прокрутки при скролле
         if self.all_data_canvas:
             self.all_data_canvas.bind("<Configure>", self.on_scroll_configure)
             self.all_data_canvas.bind("<MouseWheel>", self.on_mousewheel)
             self.all_data_canvas.bind("<Button-4>", self.on_mousewheel)
             self.all_data_canvas.bind("<Button-5>", self.on_mousewheel)
-    
-    def on_scroll_configure(self, event):
-        """Сохраняет позицию прокрутки при изменении размера"""
-        if self.all_data_canvas:
-            self.scroll_position = self.all_data_canvas.yview()[0]
-    
-    def on_mousewheel(self, event):
-        """Обновляет позицию прокрутки при скролле колесиком"""
-        # Сохраняем позицию после скролла с небольшой задержкой
-        self.after(50, self.save_scroll_position)
-    
-    def save_scroll_position(self):
-        """Сохраняет текущую позицию прокрутки"""
-        if self.all_data_canvas:
-            self.scroll_position = self.all_data_canvas.yview()[0]
-    
-    def restore_scroll_position(self):
-        """Восстанавливает позицию прокрутки"""
-        if self.all_data_canvas and self.scroll_position > 0:
-            self.all_data_canvas.yview_moveto(self.scroll_position)
-    
+
     def create_info_block(self, parent, title):
-        frame = ctk.CTkFrame(parent, corner_radius=10)
-        frame.pack(fill="x", pady=8)
-        
+        frame = ctk.CTkFrame(parent, corner_radius=8)
+        frame.pack(fill="x", pady=6, padx=2)  # fill="x" – растягиваем по ширине колонки
+
         title_label = ctk.CTkLabel(
             frame,
             text=title,
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#4CAF50"
         )
-        title_label.pack(anchor="w", padx=15, pady=(10, 5))
-        
+        title_label.pack(anchor="w", padx=12, pady=(8, 4))
+
         separator = ctk.CTkFrame(frame, height=2, fg_color="#3B3B3B")
-        separator.pack(fill="x", padx=15, pady=(0, 10))
-        
+        separator.pack(fill="x", padx=12, pady=(0, 6))
+
         content_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        content_frame.pack(fill="x", padx=15, pady=(0, 10))
-        
+        content_frame.pack(fill="x", padx=12, pady=(0, 8))
+
         content_text = ctk.CTkTextbox(
             content_frame,
-            font=ctk.CTkFont(family="Consolas", size=13),
-            height=150,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            height=220,
             wrap="word"
         )
         content_text.pack(fill="both", expand=True)
-        
+
         content_text.insert("1.0", "Loading data...")
         content_text.configure(state="disabled")
-        
+
         return {'frame': frame, 'text': content_text}
-    
+
+    def on_scroll_configure(self, event):
+        if self.all_data_canvas:
+            self.scroll_position = self.all_data_canvas.yview()[0]
+
+    def on_mousewheel(self, event):
+        self.after(50, self.save_scroll_position)
+
+    def save_scroll_position(self):
+        if self.all_data_canvas:
+            self.scroll_position = self.all_data_canvas.yview()[0]
+
+    def restore_scroll_position(self):
+        if self.all_data_canvas and self.scroll_position > 0:
+            self.all_data_canvas.yview_moveto(self.scroll_position)
+
     def update_all_data_display(self, data: Dict):
-        # Сохраняем позицию перед обновлением
+        """Заполняет вкладку All Data – вызывается только один раз при загрузке."""
+        # Сохраняем позицию прокрутки (на случай, если она изменилась)
         self.save_scroll_position()
-        
         detailed_hw = data.get('detailed_hardware', {})
-        
+
         os_info = f"""
   Operating System       : {platform.system()} {platform.release()}
   OS Version             : {platform.version()}
@@ -1510,7 +1418,7 @@ class MainApp(ctk.CTkToplevel):
   Date & Time            : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
         self.update_text_widget(self.all_data_text_widgets['os'], os_info)
-        
+
         sys_info = data.get('system_info', {})
         mb_info = f"""
   Motherboard Manufacturer: {sys_info.get('motherboard_manufacturer', 'N/A')}
@@ -1530,7 +1438,7 @@ class MainApp(ctk.CTkToplevel):
   Part of Domain         : {sys_info.get('part_of_domain', False)}
 """
         self.update_text_widget(self.all_data_text_widgets['motherboard'], mb_info)
-        
+
         cpu_detailed = detailed_hw.get('cpu', {})
         cpu = data.get('cpu', {})
         cpu_info = f"""
@@ -1555,7 +1463,7 @@ class MainApp(ctk.CTkToplevel):
   Temperature            : {cpu.get('temperature', 0):.1f} C
 """
         self.update_text_widget(self.all_data_text_widgets['cpu'], cpu_info)
-        
+
         ram = data.get('ram', {})
         ram_info = f"""
   Total Memory           : {ram.get('total', 0):.2f} GB
@@ -1575,13 +1483,9 @@ class MainApp(ctk.CTkToplevel):
          Size             : {module.get('size', 0):.2f} GB
          Speed            : {module.get('speed', 'N/A')} MHz
          Model            : {module.get('model', 'N/A')}
-         Serial           : {module.get('serial', 'N/A')}
-         Data Width       : {module.get('data_width', 'N/A')}
-         Total Width      : {module.get('total_width', 'N/A')}
 """
-        
         self.update_text_widget(self.all_data_text_widgets['ram'], ram_info)
-        
+
         monitors = data.get('monitors', [])
         monitors_info = ""
         if monitors:
@@ -1602,16 +1506,10 @@ class MainApp(ctk.CTkToplevel):
                     monitors_info += f"    Manufacturer         : {monitor.get('manufacturer', 'Unknown')}\n"
                 if monitor.get('product_name'):
                     monitors_info += f"    Product Name         : {monitor.get('product_name', 'N/A')}\n"
-                if monitor.get('product_id'):
-                    monitors_info += f"    Product ID           : {monitor.get('product_id', 'N/A')}\n"
-                if monitor.get('serial'):
-                    monitors_info += f"    Serial Number        : {monitor.get('serial', 'N/A')}\n"
-                monitors_info += f"    Position             : x={monitor.get('x', 0)}, y={monitor.get('y', 0)}\n"
         else:
             monitors_info = "  No monitors detected\n"
-        
         self.update_text_widget(self.all_data_text_widgets['monitors'], monitors_info)
-        
+
         gpu_list = data.get('gpu', [])
         gpu_detailed = detailed_hw.get('gpu', [])
         gpu_info = ""
@@ -1623,19 +1521,15 @@ class MainApp(ctk.CTkToplevel):
     Load                 : {gpu.get('load', 0):.1f}%
     Temperature          : {gpu.get('temperature', 0):.1f} C
     Driver Version       : {gpu.get('driver', gpu_det.get('driver_version', 'N/A'))}
-    Driver Date          : {gpu_det.get('driver_date', 'N/A')}
     Video Processor      : {gpu_det.get('video_processor', 'N/A')}
     Video Memory Type    : {gpu_det.get('video_memory_type', 'N/A')}
     Current Resolution   : {gpu_det.get('current_horizontal_res', 'N/A')} x {gpu_det.get('current_vertical_res', 'N/A')}
     Refresh Rate         : {gpu_det.get('current_refresh_rate', 'N/A')} Hz
-    Max Refresh Rate     : {gpu_det.get('max_refresh_rate', 'N/A')} Hz
-    Min Refresh Rate     : {gpu_det.get('min_refresh_rate', 'N/A')} Hz
 """
         if not gpu_info:
             gpu_info = "  No GPU detected\n"
-        
         self.update_text_widget(self.all_data_text_widgets['gpu'], gpu_info)
-        
+
         disks = data.get('disks', [])
         disk_detailed = detailed_hw.get('disks', [])
         disks_info = ""
@@ -1643,22 +1537,17 @@ class MainApp(ctk.CTkToplevel):
             disk_det = disk_detailed[i] if i < len(disk_detailed) else {}
             disks_info += f"""
   {disk.get('device', 'N/A')} ({disk.get('type', 'N/A')})
-    Model                : {disk.get('model', disk_det.get('model', 'N/A'))[:40]}
+    Model                : {disk.get('model', disk_det.get('model', 'N/A'))[:35]}
     Serial Number        : {disk_det.get('serial', 'N/A')}
     Interface            : {disk.get('interface', disk_det.get('interface_type', 'N/A'))}
-    Media Type           : {disk_det.get('media_type', 'N/A')}
-    Firmware Revision    : {disk_det.get('firmware_revision', 'N/A')}
     Total                : {disk.get('total', disk_det.get('size', 0)):.1f} GB
     Used                 : {disk.get('used', 0):.1f} GB ({disk.get('percent', 0):.1f}%)
     Free                 : {disk.get('free', 0):.1f} GB
-    Partitions           : {disk_det.get('partitions', 'N/A')}
-    Status               : {disk_det.get('status', 'N/A')}
 """
         if not disks_info:
             disks_info = "  No storage devices detected\n"
-        
         self.update_text_widget(self.all_data_text_widgets['disks'], disks_info)
-        
+
         network = data.get('network', [])
         network_detailed = detailed_hw.get('network', [])
         network_info = ""
@@ -1670,29 +1559,22 @@ class MainApp(ctk.CTkToplevel):
     IPv4                 : {adapter.get('ipv4', 'N/A')}
     MAC                  : {adapter.get('mac', net_det.get('mac', 'N/A'))}
     Speed                : {adapter.get('speed', f"{net_det.get('speed', 0)} Mbps" if net_det.get('speed') else 'N/A')}
-    Manufacturer         : {net_det.get('manufacturer', 'N/A')}
-    Adapter Type         : {net_det.get('adapter_type', 'N/A')}
-    Physical Adapter     : {net_det.get('physical_adapter', False)}
-    Connection Status    : {net_det.get('connection_status', 'N/A')}
 """
         if not network_info:
             network_info = "  No network adapters detected\n"
-        
         self.update_text_widget(self.all_data_text_widgets['network'], network_info)
-        
+
         temps = data.get('temperatures', {})
         temps_info = ""
         if temps:
             cpu_temps = {k: v for k, v in temps.items() if 'CPU' in k or 'Core' in k or 'Core:' in k}
             other_temps = {k: v for k, v in temps.items() if 'CPU' not in k and 'Core' not in k and 'Core:' not in k}
-            
             if cpu_temps:
                 temps_info += "  Processor:\n"
                 for name, temp in cpu_temps.items():
                     color = "G" if temp < 50 else "Y" if temp < 70 else "R"
                     temps_info += f"    [{color}] {name:<20} : {temp:.1f} C\n"
                 temps_info += "\n"
-            
             if other_temps:
                 temps_info += "  Other Components:\n"
                 for name, temp in other_temps.items():
@@ -1701,9 +1583,8 @@ class MainApp(ctk.CTkToplevel):
                     temps_info += f"    [{color}] {clean_name:<25} : {temp:.1f} C\n"
         else:
             temps_info = "  No temperature data available\n"
-        
         self.update_text_widget(self.all_data_text_widgets['temperatures'], temps_info)
-        
+
         resources_info = f"""
   CPU Load               : {data.get('cpu_load', 0):.1f}%
   RAM Usage              : {data.get('ram_percent', 0):.1f}%
@@ -1721,10 +1602,9 @@ class MainApp(ctk.CTkToplevel):
   Uptime                 : {int((time.time() - self.start_time) // 60)} min {int((time.time() - self.start_time) % 60)} sec
 """
         self.update_text_widget(self.all_data_text_widgets['resources'], resources_info)
-        
-        # Восстанавливаем позицию после обновления
+
         self.restore_scroll_position()
-    
+
     def update_text_widget(self, text_widget, content):
         try:
             text_widget.configure(state="normal")
@@ -1733,14 +1613,15 @@ class MainApp(ctk.CTkToplevel):
             text_widget.configure(state="disabled")
         except Exception as e:
             print(f"Text update error: {e}")
-    
+
+    # ==================== SYSTEM INFO TAB ====================
     def create_system_info_tab(self):
         selector_frame = ctk.CTkFrame(self.info_tab, fg_color="#2B2B2B")
         selector_frame.pack(fill="x", padx=10, pady=10)
-        
+
         label = ctk.CTkLabel(selector_frame, text="Select category:", font=ctk.CTkFont(size=14))
         label.pack(side="left", padx=10, pady=5)
-        
+
         self.category_var = tk.StringVar(value="OS & Platform")
         categories = [
             "OS & Platform",
@@ -1753,7 +1634,7 @@ class MainApp(ctk.CTkToplevel):
             "Monitors",
             "Temperatures"
         ]
-        
+
         self.category_menu = ctk.CTkOptionMenu(
             selector_frame,
             values=categories,
@@ -1764,21 +1645,26 @@ class MainApp(ctk.CTkToplevel):
             font=ctk.CTkFont(size=13)
         )
         self.category_menu.pack(side="left", padx=10, pady=5)
-        
+
         self.info_textbox = ctk.CTkTextbox(
             self.info_tab,
             font=ctk.CTkFont(family="Consolas", size=14),
             wrap="word"
         )
         self.info_textbox.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-    
+
     def on_category_change(self, choice):
         if hasattr(self, 'current_data') and self.current_data:
             self.display_category_info(choice, self.current_data)
-    
+
     def display_category_info(self, category: str, data: Dict):
+        try:
+            self.info_scroll_pos = self.info_textbox.yview()[0]
+        except:
+            pass
+
         detailed_hw = data.get('detailed_hardware', {})
-        
+
         if category == "OS & Platform":
             sys_info = data.get('system_info', {})
             info = f"""
@@ -1805,7 +1691,7 @@ class MainApp(ctk.CTkToplevel):
   Part of Domain         : {sys_info.get('part_of_domain', False)}
   Network Server Mode    : {sys_info.get('network_server_mode', False)}
 """
-        
+
         elif category == "Motherboard":
             board = detailed_hw.get('motherboard', {})
             bios = detailed_hw.get('bios', {})
@@ -1847,7 +1733,7 @@ class MainApp(ctk.CTkToplevel):
     Current Language     : {bios.get('current_language', 'N/A')}
     Language Edition     : {bios.get('language_edition', 'N/A')}
 """
-        
+
         elif category == "Processor (CPU)":
             cpu = data.get('cpu', {})
             cpu_det = detailed_hw.get('cpu', {})
@@ -1889,7 +1775,7 @@ class MainApp(ctk.CTkToplevel):
   Current Load           : {cpu.get('load', 0):.1f}%
   Temperature            : {cpu.get('temperature', 0):.1f} C
 """
-        
+
         elif category == "Memory (RAM)":
             ram = data.get('ram', {})
             info = f"""
@@ -1914,14 +1800,8 @@ class MainApp(ctk.CTkToplevel):
        Size             : {module.get('size', 0):.2f} GB
        Speed            : {module.get('speed', 'N/A')} MHz
        Model            : {module.get('model', 'N/A')}
-       Serial           : {module.get('serial', 'N/A')}
-       Data Width       : {module.get('data_width', 'N/A')}
-       Total Width      : {module.get('total_width', 'N/A')}
-       Form Factor      : {module.get('form_factor', 'N/A')}
-       Memory Type      : {module.get('memory_type', 'N/A')}
-       Status           : {module.get('status', 'N/A')}
 """
-        
+
         elif category == "Graphics (GPU)":
             gpu_list = data.get('gpu', [])
             gpu_det = detailed_hw.get('gpu', [])
@@ -1940,7 +1820,6 @@ class MainApp(ctk.CTkToplevel):
   Load                   : {gpu.get('load', 0):.1f}%
   Temperature            : {gpu.get('temperature', 0):.1f} C
   Driver Version         : {gpu.get('driver', gpu_d.get('driver_version', 'N/A'))}
-  Driver Date            : {gpu_d.get('driver_date', 'N/A')}
   Video Processor        : {gpu_d.get('video_processor', 'N/A')}
   Video Memory Type      : {gpu_d.get('video_memory_type', 'N/A')}
   Current Resolution     : {gpu_d.get('current_horizontal_res', 'N/A')} x {gpu_d.get('current_vertical_res', 'N/A')}
@@ -1951,11 +1830,10 @@ class MainApp(ctk.CTkToplevel):
   Device ID              : {gpu_d.get('device_id', 'N/A')}
   PNP Device ID          : {gpu_d.get('pnp_device_id', 'N/A')}
   Status                 : {gpu_d.get('status', 'N/A')}
-  Install Date           : {gpu_d.get('install_date', 'N/A')}
 """
             if not gpu_list:
                 info += "\n  No GPU detected\n"
-        
+
         elif category == "Storage":
             disks = data.get('disks', [])
             disk_det = detailed_hw.get('disks', [])
@@ -1972,8 +1850,6 @@ class MainApp(ctk.CTkToplevel):
   Serial Number          : {disk_d.get('serial', 'N/A')}
   Type                   : {disk.get('type', 'N/A')}
   Interface              : {disk.get('interface', disk_d.get('interface_type', 'N/A'))}
-  Media Type             : {disk_d.get('media_type', 'N/A')}
-  Firmware Revision      : {disk_d.get('firmware_revision', 'N/A')}
   Filesystem             : {disk.get('filesystem', 'N/A')}
   Mount Point            : {disk.get('mount', 'N/A')}
   
@@ -1993,7 +1869,7 @@ class MainApp(ctk.CTkToplevel):
 """
             if not disks:
                 info += "\n  No storage devices detected\n"
-        
+
         elif category == "Network Adapters":
             network = data.get('network', [])
             net_det = detailed_hw.get('network', [])
@@ -2028,7 +1904,7 @@ class MainApp(ctk.CTkToplevel):
 """
             if not network:
                 info += "\n  No network adapters detected\n"
-        
+
         elif category == "Monitors":
             monitors = data.get('monitors', [])
             info = f"""
@@ -2054,14 +1930,9 @@ class MainApp(ctk.CTkToplevel):
                         info += f"    Manufacturer         : {monitor.get('manufacturer', 'Unknown')}\n"
                     if monitor.get('product_name'):
                         info += f"    Product Name         : {monitor.get('product_name', 'N/A')}\n"
-                    if monitor.get('product_id'):
-                        info += f"    Product ID           : {monitor.get('product_id', 'N/A')}\n"
-                    if monitor.get('serial'):
-                        info += f"    Serial Number        : {monitor.get('serial', 'N/A')}\n"
-                    info += f"    Position             : x={monitor.get('x', 0)}, y={monitor.get('y', 0)}\n"
             else:
                 info += "\n  No monitors detected\n"
-        
+
         elif category == "Temperatures":
             temps = data.get('temperatures', {})
             info = f"""
@@ -2072,13 +1943,11 @@ class MainApp(ctk.CTkToplevel):
             if temps:
                 cpu_temps = {k: v for k, v in temps.items() if 'CPU' in k or 'Core' in k or 'Core:' in k}
                 other_temps = {k: v for k, v in temps.items() if 'CPU' not in k and 'Core' not in k and 'Core:' not in k}
-                
                 if cpu_temps:
                     info += "\n  PROCESSOR:\n"
                     for name, temp in cpu_temps.items():
                         color = "G" if temp < 50 else "Y" if temp < 70 else "R"
                         info += f"    [{color}] {name:<20} : {temp:.1f} C\n"
-                
                 if other_temps:
                     info += "\n  OTHER COMPONENTS:\n"
                     for name, temp in other_temps.items():
@@ -2087,65 +1956,70 @@ class MainApp(ctk.CTkToplevel):
                         info += f"    [{color}] {clean_name:<25} : {temp:.1f} C\n"
             else:
                 info += "\n  No temperature data available\n"
-        
+
         self.info_textbox.delete("1.0", "end")
         self.info_textbox.insert("1.0", info)
-    
+        try:
+            self.info_textbox.yview_moveto(self.info_scroll_pos)
+        except:
+            pass
+
+    # ==================== MONITOR TAB ====================
     def create_monitor_tab(self):
         monitor_frame = ctk.CTkFrame(self.monitor_tab)
         monitor_frame.pack(fill="both", expand=True, padx=15, pady=15)
-        
+
         title = ctk.CTkLabel(
             monitor_frame,
             text="Real-Time Resource Monitoring",
             font=ctk.CTkFont(size=20, weight="bold")
         )
         title.pack(pady=(10, 20))
-        
+
         metrics_frame = ctk.CTkFrame(monitor_frame)
         metrics_frame.pack(fill="x", padx=20, pady=10)
-        
+
         self.progress_bars = {}
         self.progress_labels = {}
-        
+
         metrics = [
             ("CPU", "#4CAF50", "Processor"),
             ("RAM", "#2196F3", "Memory"),
             ("GPU", "#FF9800", "Graphics")
         ]
-        
+
         for key, color, name in metrics:
             frame = ctk.CTkFrame(metrics_frame)
             frame.pack(side="left", expand=True, fill="both", padx=10, pady=10)
-            
+
             label = ctk.CTkLabel(frame, text=name, font=ctk.CTkFont(size=14, weight="bold"))
             label.pack(pady=(10, 5))
-            
+
             progress = ctk.CTkProgressBar(frame, width=250, height=35, progress_color=color)
             progress.pack(pady=10)
             progress.set(0)
-            
+
             value_label = ctk.CTkLabel(frame, text="0%", font=ctk.CTkFont(size=24, weight="bold"))
             value_label.pack(pady=5)
-            
+
             self.progress_bars[key] = progress
             self.progress_labels[key] = value_label
-        
+
         temp_frame = ctk.CTkFrame(monitor_frame)
         temp_frame.pack(fill="x", padx=20, pady=20)
-        
+
         temp_title = ctk.CTkLabel(
             temp_frame,
             text="Component Temperatures",
             font=ctk.CTkFont(size=16, weight="bold")
         )
         temp_title.pack(pady=(10, 15))
-        
+
         self.temp_container = ctk.CTkFrame(temp_frame, fg_color="transparent")
         self.temp_container.pack(fill="x", padx=20, pady=10)
-        
+
         self.temp_widgets = {}
-        
+
         self.temp_loading_label = ctk.CTkLabel(
             self.temp_container,
             text="Loading temperature data...",
@@ -2153,27 +2027,26 @@ class MainApp(ctk.CTkToplevel):
             text_color="gray"
         )
         self.temp_loading_label.pack(pady=30)
-        
+
         extra_frame = ctk.CTkFrame(monitor_frame)
         extra_frame.pack(fill="x", padx=20, pady=10)
-        
+
         extra_title = ctk.CTkLabel(
             extra_frame,
             text="Additional Sensors",
             font=ctk.CTkFont(size=16, weight="bold")
         )
         extra_title.pack(pady=(10, 5))
-        
+
         self.extra_container = ctk.CTkFrame(extra_frame, fg_color="transparent")
         self.extra_container.pack(fill="x", padx=20, pady=10)
-        
+
         self.extra_widgets = {}
-    
+
     def update_temperatures_display(self, temperatures: Dict):
         if not temperatures:
             for widget in self.temp_container.winfo_children():
                 widget.destroy()
-            
             no_data_label = ctk.CTkLabel(
                 self.temp_container,
                 text="No temperature data available\n\nEnsure LibreHardwareMonitor is installed",
@@ -2182,18 +2055,18 @@ class MainApp(ctk.CTkToplevel):
             )
             no_data_label.pack(pady=30)
             return
-        
+
         if not self.temp_widgets:
             for widget in self.temp_container.winfo_children():
                 widget.destroy()
-            
+
             categories = {
                 'Processor Cores': {},
                 'Main Components': {},
                 'Motherboard': {},
                 'Storage': {}
             }
-            
+
             for name, temp in temperatures.items():
                 if 'Core' in name or 'Core:' in name:
                     categories['Processor Cores'][name] = temp
@@ -2205,12 +2078,11 @@ class MainApp(ctk.CTkToplevel):
                     categories['Storage'][name] = temp
                 else:
                     categories['Main Components'][name] = temp
-            
+
             for category, items in categories.items():
                 if items:
                     category_frame = ctk.CTkFrame(self.temp_container, fg_color="#2B2B2B", corner_radius=8)
                     category_frame.pack(fill="x", padx=5, pady=5)
-                    
                     category_label = ctk.CTkLabel(
                         category_frame,
                         text=f"[ {category} ]",
@@ -2218,17 +2090,14 @@ class MainApp(ctk.CTkToplevel):
                         text_color="#FFD700"
                     )
                     category_label.pack(anchor="w", padx=10, pady=(5, 0))
-                    
                     items_frame = ctk.CTkFrame(category_frame, fg_color="transparent")
                     items_frame.pack(fill="x", padx=10, pady=5)
-                    
                     row_frame = None
                     col_count = 0
                     for name, temp in items.items():
                         if col_count % 3 == 0:
                             row_frame = ctk.CTkFrame(items_frame, fg_color="transparent")
                             row_frame.pack(fill="x", pady=2)
-                        
                         if temp < 40:
                             color = "#4CAF50"
                             indicator = " "
@@ -2241,14 +2110,11 @@ class MainApp(ctk.CTkToplevel):
                         else:
                             color = "#F44336"
                             indicator = " "
-                        
                         temp_card = ctk.CTkFrame(row_frame, fg_color="#3B3B3B", corner_radius=6)
                         temp_card.pack(side="left", expand=True, fill="both", padx=3, pady=2)
-                        
                         display_name = name.replace('MB:', '').replace('Disk:', '').replace('Thermal:', '').strip()
                         if len(display_name) > 25:
                             display_name = display_name[:22] + "..."
-                        
                         name_label = ctk.CTkLabel(
                             temp_card,
                             text=f"{indicator} {display_name}",
@@ -2256,7 +2122,6 @@ class MainApp(ctk.CTkToplevel):
                             text_color="gray"
                         )
                         name_label.pack(pady=(5, 0))
-                        
                         temp_label = ctk.CTkLabel(
                             temp_card,
                             text=f"{temp:.1f} C",
@@ -2264,20 +2129,17 @@ class MainApp(ctk.CTkToplevel):
                             text_color=color
                         )
                         temp_label.pack(pady=(0, 5))
-                        
                         self.temp_widgets[name] = {
                             'label': temp_label,
                             'frame': temp_card,
                             'color': color
                         }
-                        
                         col_count += 1
         else:
             for name, temp in temperatures.items():
                 if name in self.temp_widgets:
                     label = self.temp_widgets[name]['label']
                     label.configure(text=f"{temp:.1f} C")
-                    
                     if temp < 40:
                         color = "#4CAF50"
                     elif temp < 60:
@@ -2286,14 +2148,12 @@ class MainApp(ctk.CTkToplevel):
                         color = "#FF9800"
                     else:
                         color = "#F44336"
-                    
                     label.configure(text_color=color)
-    
+
     def update_extra_sensors_display(self, sensors: List):
         if not sensors:
             for widget in self.extra_container.winfo_children():
                 widget.destroy()
-            
             no_data_label = ctk.CTkLabel(
                 self.extra_container,
                 text="No additional sensors found",
@@ -2302,25 +2162,21 @@ class MainApp(ctk.CTkToplevel):
             )
             no_data_label.pack(pady=30)
             return
-        
+
         if not hasattr(self, 'extra_widgets_created') or not self.extra_widgets_created:
             for widget in self.extra_container.winfo_children():
                 widget.destroy()
-            
             self.extra_widgets = {}
-            
             groups = {}
             for sensor in sensors:
                 sensor_type = sensor.get('type', 'Unknown')
                 if sensor_type not in groups:
                     groups[sensor_type] = []
                 groups[sensor_type].append(sensor)
-            
             for sensor_type, items in groups.items():
                 if items:
                     type_frame = ctk.CTkFrame(self.extra_container, fg_color="#2B2B2B", corner_radius=8)
                     type_frame.pack(fill="x", padx=5, pady=5)
-                    
                     type_label = ctk.CTkLabel(
                         type_frame,
                         text=f"[ {sensor_type} ]",
@@ -2328,20 +2184,16 @@ class MainApp(ctk.CTkToplevel):
                         text_color="#87CEEB"
                     )
                     type_label.pack(anchor="w", padx=10, pady=(5, 0))
-                    
                     items_frame = ctk.CTkFrame(type_frame, fg_color="transparent")
                     items_frame.pack(fill="x", padx=10, pady=5)
-                    
                     row_frame = None
                     col_count = 0
                     for sensor in items:
                         if col_count % 4 == 0:
                             row_frame = ctk.CTkFrame(items_frame, fg_color="transparent")
                             row_frame.pack(fill="x", pady=2)
-                        
                         card = ctk.CTkFrame(row_frame, fg_color="#3B3B3B", corner_radius=6)
                         card.pack(side="left", expand=True, fill="both", padx=3, pady=2)
-                        
                         name_label = ctk.CTkLabel(
                             card,
                             text=sensor.get('name', 'Unknown')[:25],
@@ -2349,7 +2201,6 @@ class MainApp(ctk.CTkToplevel):
                             text_color="gray"
                         )
                         name_label.pack(pady=(3, 0))
-                        
                         value_label = ctk.CTkLabel(
                             card,
                             text=f"{sensor.get('value', 0):.1f} {sensor.get('unit', '')}",
@@ -2357,15 +2208,12 @@ class MainApp(ctk.CTkToplevel):
                             text_color="#87CEEB"
                         )
                         value_label.pack(pady=(0, 3))
-                        
                         key = f"{sensor_type}_{sensor.get('name', '')}"
                         self.extra_widgets[key] = {
                             'label': value_label,
                             'card': card
                         }
-                        
                         col_count += 1
-            
             self.extra_widgets_created = True
         else:
             for sensor in sensors:
@@ -2374,21 +2222,22 @@ class MainApp(ctk.CTkToplevel):
                     self.extra_widgets[key]['label'].configure(
                         text=f"{sensor.get('value', 0):.1f} {sensor.get('unit', '')}"
                     )
-    
+
+    # ==================== DATABASE TAB ====================
     def create_database_tab(self):
         db_frame = ctk.CTkFrame(self.database_tab)
         db_frame.pack(fill="both", expand=True, padx=15, pady=15)
-        
+
         title = ctk.CTkLabel(
             db_frame,
             text="Database Management",
             font=ctk.CTkFont(size=20, weight="bold")
         )
         title.pack(pady=(10, 15))
-        
+
         btn_frame = ctk.CTkFrame(db_frame)
         btn_frame.pack(fill="x", padx=10, pady=10)
-        
+
         export_btn = ctk.CTkButton(
             btn_frame,
             text="Export to JSON",
@@ -2397,7 +2246,7 @@ class MainApp(ctk.CTkToplevel):
             width=150
         )
         export_btn.pack(side="left", padx=5)
-        
+
         refresh_btn = ctk.CTkButton(
             btn_frame,
             text="Refresh",
@@ -2406,7 +2255,7 @@ class MainApp(ctk.CTkToplevel):
             width=150
         )
         refresh_btn.pack(side="left", padx=5)
-        
+
         clear_btn = ctk.CTkButton(
             btn_frame,
             text="Clear Display",
@@ -2415,217 +2264,20 @@ class MainApp(ctk.CTkToplevel):
             width=150
         )
         clear_btn.pack(side="left", padx=5)
-        
+
         self.db_text = ctk.CTkTextbox(
             db_frame,
             font=ctk.CTkFont(family="Consolas", size=13),
             wrap="word"
         )
         self.db_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-    
-    def create_settings_tab(self):
-        settings_frame = ctk.CTkScrollableFrame(self.settings_tab)
-        settings_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        
-        appearance_frame = ctk.CTkFrame(settings_frame)
-        appearance_frame.pack(fill="x", pady=10)
-        
-        appearance_title = ctk.CTkLabel(
-            appearance_frame,
-            text="Appearance",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        appearance_title.pack(pady=(10, 15))
-        
-        theme_frame = ctk.CTkFrame(appearance_frame, fg_color="transparent")
-        theme_frame.pack(fill="x", padx=20, pady=5)
-        
-        theme_label = ctk.CTkLabel(theme_frame, text="Theme:", width=150)
-        theme_label.pack(side="left")
-        
-        self.theme_var = tk.StringVar(value="dark")
-        theme_menu = ctk.CTkOptionMenu(
-            theme_frame,
-            values=["dark", "light"],
-            variable=self.theme_var,
-            command=self.change_theme,
-            width=150
-        )
-        theme_menu.pack(side="left", padx=10)
-        
-        update_frame = ctk.CTkFrame(settings_frame)
-        update_frame.pack(fill="x", pady=10)
-        
-        update_title = ctk.CTkLabel(
-            update_frame,
-            text="Data Update",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        update_title.pack(pady=(10, 15))
-        
-        interval_frame = ctk.CTkFrame(update_frame, fg_color="transparent")
-        interval_frame.pack(fill="x", padx=20, pady=5)
-        
-        interval_label = ctk.CTkLabel(interval_frame, text="Update Interval (sec):", width=150)
-        interval_label.pack(side="left")
-        
-        self.interval_var = tk.StringVar(value="0.5")
-        interval_menu = ctk.CTkOptionMenu(
-            interval_frame,
-            values=["0.5", "1", "2", "3", "5"],
-            variable=self.interval_var,
-            command=self.change_interval,
-            width=150
-        )
-        interval_menu.pack(side="left", padx=10)
-        
-        about_btn = ctk.CTkButton(
-            settings_frame,
-            text="About",
-            command=self.show_about,
-            width=200,
-            height=35
-        )
-        about_btn.pack(pady=15)
-    
-    def create_help_tab(self):
-        help_frame = ctk.CTkFrame(self.help_tab)
-        help_frame.pack(fill="both", expand=True, padx=15, pady=15)
-        
-        title = ctk.CTkLabel(
-            help_frame,
-            text="Help",
-            font=ctk.CTkFont(size=20, weight="bold")
-        )
-        title.pack(pady=(10, 15))
-        
-        help_text = ctk.CTkTextbox(
-            help_frame,
-            font=ctk.CTkFont(size=13),
-            wrap="word"
-        )
-        help_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        
-        help_content = f"""
-============================================================
-                  SYSTEM MONITOR v2.0
-                Professional System Monitoring
-============================================================
 
-FEATURES:
-
-1. SYSTEM INFO TAB
-   • Dropdown category selection
-   • Detailed information per category
-
-2. ALL DATA TAB
-   • All system information in two columns
-   • Automatic real-time updates with scroll position memory
-
-3. REAL-TIME MONITORING
-   • Smooth progress bar animation
-   • All available temperatures
-   • Additional sensors (fans, voltage, power)
-
-4. DATABASE
-   • Automatic session saving
-   • JSON export
-
-QUICK START:
-   Username: a
-   Password: 1
-
-HOTKEYS:
-   F5 - Refresh
-   Ctrl+Q - Exit
-"""
-        
-        help_text.insert("1.0", help_content)
-        help_text.configure(state="disabled")
-    
-    def load_initial_data(self):
-        try:
-            self.db.start_session(self.username)
-            data = self.collector.collect_all()
-            self.current_data = data
-            self.db.save_data(data)
-            
-            self.display_category_info(self.category_var.get(), data)
-            self.update_temperatures_display(data.get('temperatures', {}))
-            self.update_all_data_display(data)
-            
-            extra_sensors = self.collector.get_extra_sensors()
-            self.update_extra_sensors_display(extra_sensors)
-            
-            self.update_status("Data loaded successfully", "green")
-            self.refresh_db_data()
-        except Exception as e:
-            self.update_status(f"Error: {str(e)[:50]}", "red")
-    
-    def start_monitoring(self):
-        self.monitor_thread = threading.Thread(target=self.monitoring_loop, daemon=True)
-        self.monitor_thread.start()
-        self.animate_bars()
-    
-    def monitoring_loop(self):
-        last_db_save = time.time()
-        
-        while self.running:
-            try:
-                data = self.collector.collect_all()
-                self.current_data = data
-                self.update_count += 1
-                
-                self.target_values['CPU'] = data.get('cpu_load', 0)
-                self.target_values['RAM'] = data.get('ram_percent', 0)
-                self.target_values['GPU'] = data.get('gpu_load', 0)
-                
-                self.after(0, lambda d=data: self.update_temperatures_display(d.get('temperatures', {})))
-                self.after(0, lambda d=data: self.display_category_info(self.category_var.get(), d))
-                self.after(0, lambda d=data: self.update_all_data_display(d))
-                
-                extra_sensors = self.collector.get_extra_sensors()
-                self.after(0, lambda s=extra_sensors: self.update_extra_sensors_display(s))
-                
-                current_time = time.time()
-                if current_time - last_db_save >= 60:
-                    self.db.save_data(data)
-                    last_db_save = current_time
-            except Exception as e:
-                pass
-            
-            try:
-                interval = float(self.interval_var.get())
-            except:
-                interval = 0.5
-            time.sleep(interval)
-    
-    def animate_bars(self):
-        smoothing = 0.3
-        
-        for key in self.progress_bars:
-            diff = self.target_values[key] - self.current_values[key]
-            self.current_values[key] += diff * smoothing
-            
-            value = self.current_values[key]
-            self.progress_bars[key].set(min(value / 100, 1))
-            self.progress_labels[key].configure(text=f"{value:.1f}%")
-        
-        self.after(30, self.animate_bars)
-    
-    def refresh_info(self):
-        if self.current_data:
-            self.display_category_info(self.category_var.get(), self.current_data)
-            self.update_status("Information refreshed", "blue")
-    
     def refresh_db_data(self):
         sessions = self.db.get_all_sessions(10)
-        
         if sessions:
             db_text = "============================================================\n"
             db_text += "                 SESSION HISTORY\n"
             db_text += "============================================================\n\n"
-            
             for session in sessions:
                 cpu_load = session.get('cpu_load', 0)
                 ram_percent = session.get('ram_percent', 0)
@@ -2637,39 +2289,95 @@ SESSION #{session.get('id', 'N/A')}
   CPU Load         : {cpu_load:.1f}%
   RAM Usage        : {ram_percent:.1f}%
 """
-            
             self.db_text.delete("1.0", "end")
             self.db_text.insert("1.0", db_text)
         else:
             self.db_text.delete("1.0", "end")
             self.db_text.insert("1.0", "No data in database")
-    
+
     def clear_db_display(self):
         self.db_text.delete("1.0", "end")
         self.db_text.insert("1.0", "Display cleared")
         self.update_status("Display cleared", "orange")
-    
+
     def export_data(self):
         file_path = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
             title="Export Data"
         )
-        
         if file_path:
             if self.db.export_to_json(file_path):
                 messagebox.showinfo("Success", f"Data exported to:\n{file_path}")
                 self.update_status("Data exported", "green")
             else:
                 messagebox.showerror("Error", "Failed to export data")
-    
+
+    # ==================== SETTINGS TAB ====================
+    def create_settings_tab(self):
+        settings_frame = ctk.CTkScrollableFrame(self.settings_tab)
+        settings_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        appearance_frame = ctk.CTkFrame(settings_frame)
+        appearance_frame.pack(fill="x", pady=10)
+        appearance_title = ctk.CTkLabel(
+            appearance_frame,
+            text="Appearance",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        appearance_title.pack(pady=(10, 15))
+        theme_frame = ctk.CTkFrame(appearance_frame, fg_color="transparent")
+        theme_frame.pack(fill="x", padx=20, pady=5)
+        theme_label = ctk.CTkLabel(theme_frame, text="Theme:", width=150)
+        theme_label.pack(side="left")
+        self.theme_var = tk.StringVar(value="dark")
+        theme_menu = ctk.CTkOptionMenu(
+            theme_frame,
+            values=["dark", "light"],
+            variable=self.theme_var,
+            command=self.change_theme,
+            width=150
+        )
+        theme_menu.pack(side="left", padx=10)
+
+        update_frame = ctk.CTkFrame(settings_frame)
+        update_frame.pack(fill="x", pady=10)
+        update_title = ctk.CTkLabel(
+            update_frame,
+            text="Data Update",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        update_title.pack(pady=(10, 15))
+        interval_frame = ctk.CTkFrame(update_frame, fg_color="transparent")
+        interval_frame.pack(fill="x", padx=20, pady=5)
+        interval_label = ctk.CTkLabel(interval_frame, text="Update Interval (sec):", width=150)
+        interval_label.pack(side="left")
+        self.interval_var = tk.StringVar(value="0.5")
+        interval_menu = ctk.CTkOptionMenu(
+            interval_frame,
+            values=["0.5", "1", "2", "3", "5"],
+            variable=self.interval_var,
+            command=self.change_interval,
+            width=150
+        )
+        interval_menu.pack(side="left", padx=10)
+
+        about_btn = ctk.CTkButton(
+            settings_frame,
+            text="About",
+            command=self.show_about,
+            width=200,
+            height=35
+        )
+        about_btn.pack(pady=15)
+
     def change_theme(self, choice):
         ctk.set_appearance_mode(choice)
         self.update_status(f"Theme changed to {choice}", "blue")
-    
+
     def change_interval(self, choice):
         self.update_status(f"Update interval set to {choice} sec", "blue")
-    
+
     def show_about(self):
         libre_status = "Available" if LIBRE_AVAILABLE else "Not available"
         screen_status = "Available" if SCREENINFO_AVAILABLE else "Not available"
@@ -2701,11 +2409,135 @@ Statistics:
 © 2024 All rights reserved
 """
         messagebox.showinfo("About", about_text)
-    
+
+    # ==================== HELP TAB ====================
+    def create_help_tab(self):
+        help_frame = ctk.CTkFrame(self.help_tab)
+        help_frame.pack(fill="both", expand=True, padx=15, pady=15)
+
+        title = ctk.CTkLabel(
+            help_frame,
+            text="Help",
+            font=ctk.CTkFont(size=20, weight="bold")
+        )
+        title.pack(pady=(10, 15))
+
+        help_text = ctk.CTkTextbox(
+            help_frame,
+            font=ctk.CTkFont(size=13),
+            wrap="word"
+        )
+        help_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        help_content = f"""
+============================================================
+                  SYSTEM MONITOR v2.0
+                Professional System Monitoring
+============================================================
+
+FEATURES:
+
+1. SYSTEM INFO TAB
+   • Dropdown category selection
+   • Detailed information per category
+
+2. ALL DATA TAB
+   • All system information in two columns
+   • Static snapshot (updates only once at start)
+
+3. REAL-TIME MONITORING
+   • Smooth progress bar animation
+   • All available temperatures
+   • Additional sensors (fans, voltage, power)
+
+4. DATABASE
+   • Automatic session saving
+   • JSON export
+
+QUICK START:
+   Username: a
+   Password: 1
+
+HOTKEYS:
+   F5 - Refresh
+   Ctrl+Q - Exit
+"""
+        help_text.insert("1.0", help_content)
+        help_text.configure(state="disabled")
+
+    # ==================== MONITORING CORE ====================
+    def load_initial_data(self):
+        try:
+            self.db.start_session(self.username)
+            data = self.collector.collect_all()
+            self.current_data = data
+            self.db.save_data(data)
+
+            self.display_category_info(self.category_var.get(), data)
+            self.update_temperatures_display(data.get('temperatures', {}))
+            self.update_all_data_display(data)  # заполняем вкладку All Data один раз
+
+            extra_sensors = self.collector.get_extra_sensors()
+            self.update_extra_sensors_display(extra_sensors)
+
+            self.update_status("Data loaded successfully", "green")
+            self.refresh_db_data()
+        except Exception as e:
+            self.update_status(f"Error: {str(e)[:50]}", "red")
+
+    def start_monitoring(self):
+        self.monitor_thread = threading.Thread(target=self.monitoring_loop, daemon=True)
+        self.monitor_thread.start()
+        self.animate_bars()
+
+    def monitoring_loop(self):
+        last_db_save = time.time()
+        while self.running:
+            try:
+                data = self.collector.collect_all()
+                self.current_data = data
+                self.update_count += 1
+                self.target_values['CPU'] = data.get('cpu_load', 0)
+                self.target_values['RAM'] = data.get('ram_percent', 0)
+                self.target_values['GPU'] = data.get('gpu_load', 0)
+
+                # Обновляем только вкладки, которые должны обновляться в реальном времени
+                self.after(0, lambda d=data: self.update_temperatures_display(d.get('temperatures', {})))
+                self.after(0, lambda d=data: self.display_category_info(self.category_var.get(), d))
+                # НЕ вызываем update_all_data_display – она больше не обновляется
+
+                extra_sensors = self.collector.get_extra_sensors()
+                self.after(0, lambda s=extra_sensors: self.update_extra_sensors_display(s))
+
+                current_time = time.time()
+                if current_time - last_db_save >= 60:
+                    self.db.save_data(data)
+                    last_db_save = current_time
+            except Exception as e:
+                pass
+
+            interval = float(self.interval_var.get()) if hasattr(self, 'interval_var') else 0.5
+            time.sleep(interval)
+
+    def animate_bars(self):
+        smoothing = 0.3
+        for key in self.progress_bars:
+            diff = self.target_values[key] - self.current_values[key]
+            self.current_values[key] += diff * smoothing
+            value = self.current_values[key]
+            self.progress_bars[key].set(min(value / 100, 1))
+            self.progress_labels[key].configure(text=f"{value:.1f}%")
+        self.after(30, self.animate_bars)
+
+    def refresh_info(self):
+        if self.current_data:
+            self.display_category_info(self.category_var.get(), self.current_data)
+            self.update_status("Information refreshed", "blue")
+
     def bind_shortcuts(self):
         self.bind("<F5>", lambda e: self.refresh_info())
         self.bind("<Control-q>", lambda e: self.on_close())
-    
+
     def update_status(self, message: str, color: str = "gray"):
         colors = {
             "green": "#90EE90",
@@ -2718,22 +2550,28 @@ Statistics:
             text=f"{datetime.now().strftime('%H:%M:%S')} | {message}",
             text_color=colors.get(color, "#A9A9A9")
         )
-    
+
+    # ==================== ИСПРАВЛЕННОЕ ЗАКРЫТИЕ ====================
     def on_close(self):
+        """Корректное закрытие приложения с ожиданием завершения потоков."""
         self.running = False
-        self.collector.close()
-        self.db.close()
+        if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
+            self.monitor_thread.join(timeout=0.5)
+
+        if hasattr(self, 'collector'):
+            self.collector.close()
+        if hasattr(self, 'db'):
+            self.db.close()
         self.destroy()
+
 
 if __name__ == "__main__":
     try:
         print("=" * 50)
         print("Starting System Monitor...")
         print("=" * 50)
-        
         app = LoginWindow()
         app.mainloop()
-        
     except Exception as e:
         print(f"\nCritical error: {e}")
         import traceback
