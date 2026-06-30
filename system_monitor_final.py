@@ -48,6 +48,69 @@ ctk.set_default_color_theme("dark-blue")
 DB_PATH = "system_monitor.db"
 USERS = {"a": "1"}
 
+# ===== ФУНКЦИЯ ДЛЯ ПОИСКА ИКОНКИ =====
+def get_icon_path(filename='app_icon.ico'):
+    """Поиск файла иконки в разных папках"""
+    search_paths = [
+        os.path.dirname(__file__),  # Папка со скриптом
+        os.getcwd(),                # Текущая папка
+        os.path.join(os.path.dirname(__file__), 'assets'),
+        os.path.join(os.path.dirname(__file__), 'icons'),
+        os.path.join(os.path.dirname(__file__), 'resources'),
+        os.path.join(os.path.dirname(__file__), 'images'),
+    ]
+    
+    # Для запакованного приложения (PyInstaller)
+    if getattr(sys, 'frozen', False):
+        search_paths.append(sys._MEIPASS)
+    
+    for path in search_paths:
+        full_path = os.path.join(path, filename)
+        if os.path.exists(full_path):
+            return full_path
+    
+    # Если .ico не найден, ищем .png
+    if filename.endswith('.ico'):
+        png_path = get_icon_path(filename.replace('.ico', '.png'))
+        if png_path:
+            return png_path
+    
+    return None
+
+def set_window_icon(window, icon_name='app_icon.ico'):
+    """Универсальная установка иконки для окна"""
+    try:
+        icon_path = get_icon_path(icon_name)
+        if not icon_path:
+            print(f"Icon not found: {icon_name}")
+            return False
+        
+        if sys.platform == 'win32':
+            # Для Windows используем .ico
+            window.iconbitmap(default=icon_path)
+            return True
+        else:
+            # Для Linux/Mac используем .png
+            png_path = get_icon_path('app_icon.png')
+            if png_path:
+                icon_img = tk.PhotoImage(file=png_path)
+                window.iconphoto(True, icon_img)
+                # Сохраняем ссылку, чтобы изображение не удалилось
+                window._icon_image = icon_img
+                return True
+            else:
+                # Пробуем загрузить .ico как PhotoImage
+                try:
+                    icon_img = tk.PhotoImage(file=icon_path)
+                    window.iconphoto(True, icon_img)
+                    window._icon_image = icon_img
+                    return True
+                except:
+                    pass
+    except Exception as e:
+        print(f"Error setting icon: {e}")
+    return False
+
 # Функция для принудительного завершения процесса
 def force_exit():
     print("Принудительное завершение процесса...")
@@ -1193,10 +1256,10 @@ class HardwareCollector:
 
 
 # ====================================================================
-# КЛАСС ДЛЯ ОДНОЙ ИКОНКИ В СИСТЕМНОМ ТРЕЕ (ТОЛЬКО ЦИФРА)
+# КЛАСС ДЛЯ ОДНОЙ ИКОНКИ В СИСТЕМНОМ ТРЕЕ (С ВАШЕЙ ИКОНКОЙ)
 # ====================================================================
 class TrayIconSingle:
-    """Одиночная иконка для одной метрики (CPU/RAM/GPU)."""
+    """Одиночная иконка для одной метрики (CPU/RAM/GPU) с пользовательской иконкой."""
     def __init__(self, app, metric, update_interval=2):
         self.app = app
         self.metric = metric  # 'cpu', 'ram', 'gpu'
@@ -1207,7 +1270,7 @@ class TrayIconSingle:
 
     def create_image(self, value):
         width, height = 64, 64
-        # Цвета для каждой метрики
+        # Цвета для каждой метрики (фон)
         colors = {
             'cpu': (0, 150, 0),    # зелёный
             'ram': (0, 80, 200),   # синий
@@ -1216,16 +1279,39 @@ class TrayIconSingle:
         bg_color = colors.get(self.metric, (30, 30, 30))
         image = Image.new('RGB', (width, height), bg_color)
         draw = ImageDraw.Draw(image)
-        text = f"{value:.0f}"  # только цифра
+        
+        # Пытаемся загрузить пользовательскую иконку
+        try:
+            icon_path = get_icon_path('app_icon.png')
+            if icon_path:
+                app_icon = Image.open(icon_path)
+                # Масштабируем до 32x32
+                app_icon = app_icon.resize((32, 32), Image.Resampling.LANCZOS)
+                if app_icon.mode != 'RGB':
+                    app_icon = app_icon.convert('RGB')
+                # Вставляем иконку в центр
+                x = (width - 32) // 2
+                y = (height - 32) // 2
+                image.paste(app_icon, (x, y))
+        except Exception as e:
+            # Если иконку загрузить не удалось, просто показываем цифру на фоне
+            pass
+        
+        # Рисуем цифру поверх иконки
+        text = f"{value:.0f}"
         try:
             font = ImageFont.truetype("arial.ttf", 28)
         except:
             font = ImageFont.load_default()
+        
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         x = (width - text_width) // 2
         y = (height - text_height) // 2
+        
+        # Добавляем тень для текста
+        draw.text((x+1, y+1), text, fill=(0, 0, 0), font=font)
         draw.text((x, y), text, fill=(255, 255, 255), font=font)
         return image
 
@@ -1275,12 +1361,16 @@ class LoginWindow(ctk.CTk):
         self.title("Login - System Monitor")
         self.geometry("450x400")
         self.resizable(False, False)
+        
+        # Установка иконки
+        set_window_icon(self)
+        
         self.center_window()
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.main_frame.pack(fill="both", expand=True, padx=40, pady=30)
         self.title_label = ctk.CTkLabel(
             self.main_frame,
-            text="SYSTEM MONITOR",
+            text="BAIDA64",
             font=ctk.CTkFont(size=24, weight="bold")
         )
         self.title_label.pack(pady=(0, 10))
@@ -1365,6 +1455,9 @@ class MainApp(ctk.CTkToplevel):
         self.title(f"System Monitor - {username}")
         self.geometry("1400x850")
         self.minsize(1100, 700)
+
+        # Установка иконки для главного окна
+        set_window_icon(self)
 
         self.username = username
         self.db = Database()
@@ -2317,8 +2410,7 @@ class MainApp(ctk.CTkToplevel):
                         self.temp_widgets[name] = {
                             'label': temp_label,
                             'frame': temp_card,
-                            'color': color
-                        }
+                            'color': color                        }
                         col_count += 1
         else:
             for name, temp in temperatures.items():
